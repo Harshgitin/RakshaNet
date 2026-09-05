@@ -150,4 +150,7 @@ app.use(express.static(ROOT));
 app.get('/', (_req, res) => res.sendFile(path.join(ROOT, 'index.html')));
 
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => console.log(`RakshaNet backend running at http://localhost:${PORT}`));
+
+app.listen(PORT, "0.0.0.0", () => {
+    console.log(`RakshaNet backend running on port ${PORT}`);
+});
