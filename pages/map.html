@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RakshaNet | Live GIS & Risk Dashboard</title>
+<link rel="stylesheet" href="../css/style.css">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<link rel="stylesheet" href="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.css">
+</head>
+<body>
+<header class="navbar">
+<div class="logo"><span class="logo-icon">🛡️</span><span>Raksha<span class="logo-highlight">Net</span></span></div>
+<nav class="nav-links"><a href="../index.html">Home</a><a href="map.html" class="active">Live Map</a><a href="emergency.html">Report</a><a href="help.html">Emergency Help</a></nav>
+<div class="nav-actions"><button class="login-btn" onclick="window.location.href='../index.html#prediction'">🧠 AI</button><button class="emergency-nav-btn" onclick="window.location.href='emergency.html'">🚨 Emergency</button></div>
+</header>
+<main>
+<section class="emergency-page">
+<div class="emergency-header"><span class="emergency-label">🗺️ GIS INTELLIGENCE</span><h1>Live Disaster Intelligence Map</h1><p>Live weather, risk heatmaps, emergency reports, nearby resources and evacuation routing.</p></div>
+<div class="rn-map-topbar">
+<div class="rn-map-tools">
+<button id="locateUser" class="rn-btn primary">📍 My Location</button>
+<button id="showWeather" class="rn-btn blue">🌦️ Live Weather</button>
+<button id="showRiskZones" class="rn-btn">🔥 Risk Heatmap</button>
+<button id="showDisasters" class="rn-btn">🚨 Reports / Alerts</button>
+<button id="showHospitals" class="rn-btn">🏥 Hospitals</button>
+<button id="showShelters" class="rn-btn">🏠 Shelters</button>
+<button id="showResources" class="rn-btn">🚒 Rescue / Relief</button>
+</div>
+<div class="rn-chip">Source: IMD + live weather + OpenStreetMap</div>
+</div>
+<div class="rn-dashboard-wrap">
+<div class="rn-card rn-map-shell">
+<div id="disasterMap"></div>
+<div class="rn-footer-note">Heatmap values are calculated from live weather signals; official IMD warnings take precedence over the prototype risk estimate.</div>
+</div>
+<div class="rn-map-side">
+<div class="rn-card"><h3>📡 Data Status</h3><div class="rn-map-status-list">
+<div class="rn-status-row"><span>Weather</span><strong id="weatherStatus">Connecting…</strong></div>
+<div class="rn-status-row"><span>IMD warnings</span><strong id="imdStatus">Checking…</strong></div>
+<div class="rn-status-row"><span>OSM resources</span><strong id="osmStatus">Ready</strong></div>
+<div class="rn-status-row"><span>GPS</span><strong id="gpsStatus">Not detected</strong></div>
+</div></div>
+<div class="rn-card"><h3>🌧️ Selected Area</h3><div id="mapWeatherSummary" class="rn-muted">Click My Location or a map point.</div></div>
+<div class="rn-card" id="route">
+<h3>🛣️ Evacuation Route</h3><label class="rn-label">Destination</label>
+<select id="destinationSelect" class="rn-select"><option value="">Choose hospital / shelter</option></select>
+<div class="rn-actions" style="margin-top:10px;"><button id="safeRouteButton" class="rn-btn primary">🛣️ Calculate Route</button><button id="clearRouteButton" class="rn-btn ghost">Clear</button></div>
+<div id="routeStatus" class="rn-muted" style="margin-top:10px;">Detect your location first, then choose a destination.</div>
+</div>
+<div class="rn-card"><h3>🧭 Legend</h3><div class="rn-result-list"><div>🟢 Low risk</div><div>🟡 Watch</div><div>🟠 High</div><div>🔴 Extreme</div><div>📍 Your location</div><div>🚨 Reported incident</div></div></div>
+</div>
+</div>
+</section>
+</main>
+<footer><div class="footer-logo">🛡️ RakshaNet</div><p>Intelligent Disaster Management & Emergency Response</p></footer>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.js"></script>
+<script src="../js/location.js"></script><script src="../js/script.js"></script>
+</body>
+</html>
