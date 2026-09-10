@@ -304,16 +304,56 @@ function updatePriorityPreview() {
 }
 
 async function searchNearby(lat, lon, kind) {
-    const tag = { hospital:'amenity=hospital', shelter:'amenity=shelter', relief:'amenity=social_centre|amenity=community_centre', rescue:'emergency=fire_hydrant|emergency=ambulance_station|amenity=fire_station' }[kind];
+    const tag = {
+        hospital: 'amenity=hospital',
+        shelter: 'amenity=shelter',
+        relief: 'amenity=social_centre|amenity=community_centre',
+        rescue: 'emergency=fire_hydrant|emergency=ambulance_station|amenity=fire_station'
+    }[kind];
+
     if (!tag) return [];
-    const parts = tag.split("|").map(t => { const [k,v] = t.split("="); return `nwr[${k}=${JSON.stringify(v)}](around:15000,${lat},${lon});`; }).join("\n");
+
+    const parts = tag
+        .split("|")
+        .map(t => {
+            const [k, v] = t.split("=");
+            return `nwr[${k}=${JSON.stringify(v)}](around:15000,${lat},${lon});`;
+        })
+        .join("\n");
+
     const query = `[out:json][timeout:20];(${parts});out center tags;`;
-    const data = await fetchJSON(RN_CONFIG.overpass, { method:"POST", headers:{"Content-Type":"text/plain;charset=UTF-8"}, body:query }, 25000);
+
+    // IMPORTANT:
+    // Do NOT call Overpass directly from the browser.
+    // Use our RakshaNet backend proxy instead.
+    const data = await RN_BACKEND.request("/api/gis/nearby", {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+            query
+        })
+    });
+
     return (data.elements || []).map(el => {
-        const c = el.center || el; const t = el.tags || {};
-        return { name:t.name || "Unnamed facility", lat:Number(c.lat), lon:Number(c.lon), phone:t.phone || t["contact:phone"] || "", address:[t["addr:street"],t["addr:city"],t["addr:state"]].filter(Boolean).join(", ") };
+        const c = el.center || el;
+        const t = el.tags || {};
+
+        return {
+            name: t.name || "Unnamed facility",
+            lat: Number(c.lat),
+            lon: Number(c.lon),
+            phone: t.phone || t["contact:phone"] || "",
+            address: [
+                t["addr:street"],
+                t["addr:city"],
+                t["addr:state"]
+            ].filter(Boolean).join(", ")
+        };
     }).slice(0, 12);
 }
+
 
 function renderNearby(items, kind, lat, lon) {
     const box = $("nearbyResult"); if (!box) return;
@@ -394,10 +434,24 @@ async function initMap(){
         weatherStatus.textContent="LIVE"; weatherStatus.className="rn-status-ok";
     }
 
-    async function checkIMD(){
-        try { await fetchJSON(RN_CONFIG.imd.districtWarnings,{},10000); imdStatus.textContent="Reachable"; imdStatus.className="rn-status-ok"; }
-        catch(_){ imdStatus.textContent="Endpoint unavailable"; imdStatus.className="rn-status-warn"; }
+    async function checkIMD() {
+    try {
+        const data = await RN_BACKEND.request(
+            "/api/imd/district-warnings"
+        );
+
+        if (data) {
+            imdStatus.textContent = "Reachable";
+            imdStatus.className = "rn-status-ok";
+        } else {
+            throw new Error("No IMD data");
+        }
+    } catch (e) {
+        console.warn("IMD proxy unavailable:", e);
+        imdStatus.textContent = "Endpoint unavailable";
+        imdStatus.className = "rn-status-warn";
     }
+}
 
     function populateReports(){
         layers.reports.clearLayers();
