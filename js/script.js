@@ -497,3 +497,45 @@ document.addEventListener("DOMContentLoaded", async ()=>{
     await detectBackend();
     initHome(); initEmergencyPage(); initHelpPage(); initMap();
 });
+
+
+
+
+
+
+
+
+// ==========================================
+// RakshaNet Authentication Navbar
+// ==========================================
+
+function updateAuthNavbar() {
+    const user = localStorage.getItem("rakshanet_user");
+
+    const authButtons = document.querySelectorAll(".rn-auth-btn");
+
+    authButtons.forEach((button) => {
+
+        // Detect whether we are inside /pages/
+        const isPagesFolder =
+            window.location.pathname.includes("/pages/") ||
+            window.location.pathname.includes("\\pages\\");
+
+        if (user) {
+            button.textContent = "👤 My Profile";
+
+            button.href = isPagesFolder
+                ? "profile.html"
+                : "pages/profile.html";
+
+        } else {
+            button.textContent = "🔐 Register / Login";
+
+            button.href = isPagesFolder
+                ? "login.html"
+                : "pages/login.html";
+        }
+    });
+}
+
+document.addEventListener("DOMContentLoaded", updateAuthNavbar);

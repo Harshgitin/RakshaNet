@@ -3,6 +3,8 @@ const fs = require('fs');
 const path = require('path');
 const multer = require('multer');
 const cors = require('cors');
+const bcrypt = require('bcryptjs');
+const crypto = require('crypto');
 
 const ROOT = __dirname;
 const DATA_DIR = path.join(ROOT, 'data');
@@ -15,7 +17,8 @@ for (const dir of [DATA_DIR, UPLOAD_DIR]) {
 const FILES = {
     reports: path.join(DATA_DIR, 'reports.json'),
     sos: path.join(DATA_DIR, 'sos.json'),
-    volunteers: path.join(DATA_DIR, 'volunteers.json')
+    volunteers: path.join(DATA_DIR, 'volunteers.json'),
+    users: path.join(DATA_DIR, 'users.json')
 };
 
 for (const file of Object.values(FILES)) {
@@ -133,6 +136,628 @@ app.get(
 
     }
 );
+
+
+
+
+// =====================================================
+// AUTHENTICATION
+// =====================================================
+
+// Register
+app.post('/api/auth/register', async (req, res) => {
+
+    try {
+
+        const {
+            name,
+            mobile,
+            email,
+            password,
+            permanentLocation,
+            latitude,
+            longitude,
+            alertPreferences
+        } = req.body || {};
+
+        if (!name || !mobile || !password) {
+            return res.status(400).json({
+                error: 'Name, mobile number and password are required.'
+            });
+        }
+
+        if (password.length < 6) {
+            return res.status(400).json({
+                error: 'Password must contain at least 6 characters.'
+            });
+        }
+
+        const users = readJson(FILES.users);
+
+        const normalizedMobile = String(mobile).replace(/\s+/g, '');
+
+        const existingUser = users.find(
+            user =>
+                user.mobile === normalizedMobile ||
+                (
+                    email &&
+                    user.email &&
+                    user.email.toLowerCase() ===
+                    String(email).toLowerCase()
+                )
+        );
+
+        if (existingUser) {
+            return res.status(409).json({
+                error: 'An account with this mobile number or email already exists.'
+            });
+        }
+
+        const passwordHash =
+            await bcrypt.hash(password, 12);
+
+        const user = {
+
+            id: `USER-${Date.now()}-${crypto.randomBytes(3).toString('hex')}`,
+
+            name: String(name).trim(),
+
+            mobile: normalizedMobile,
+
+            email:
+                email
+                    ? String(email).trim().toLowerCase()
+                    : '',
+
+            passwordHash,
+
+            permanentLocation: {
+
+                name:
+                    permanentLocation?.name ||
+                    '',
+
+                latitude:
+                    Number.isFinite(Number(latitude))
+                        ? Number(latitude)
+                        : null,
+
+                longitude:
+                    Number.isFinite(Number(longitude))
+                        ? Number(longitude)
+                        : null
+
+            },
+
+            alertPreferences:
+                Array.isArray(alertPreferences)
+                    ? alertPreferences
+                    : [
+                        'heavy_rain',
+                        'flood',
+                        'landslide',
+                        'thunderstorm'
+                    ],
+
+            createdAt:
+                new Date().toISOString(),
+
+            status:
+                'ACTIVE'
+
+        };
+
+        pushRecord(
+            FILES.users,
+            user,
+            10000
+        );
+
+        return res.status(201).json({
+
+            ok: true,
+
+            user: {
+                id: user.id,
+                name: user.name,
+                mobile: user.mobile,
+                email: user.email,
+                permanentLocation:
+                    user.permanentLocation,
+                alertPreferences:
+                    user.alertPreferences
+            }
+
+        });
+
+    } catch (error) {
+
+        console.error(
+            'Registration error:',
+            error
+        );
+
+        return res.status(500).json({
+            error: 'Unable to create account.'
+        });
+
+    }
+
+});
+
+
+
+
+
+// Login
+app.post('/api/auth/login', async (req, res) => {
+
+    try {
+
+        const {
+            identifier,
+            password
+        } = req.body || {};
+
+        if (!identifier || !password) {
+
+            return res.status(400).json({
+                error: 'Mobile/email and password are required.'
+            });
+
+        }
+
+        const users = readJson(FILES.users);
+
+        const value =
+            String(identifier)
+                .trim()
+                .toLowerCase();
+
+        const user =
+            users.find(u =>
+                u.mobile === value ||
+                (
+                    u.email &&
+                    u.email.toLowerCase() === value
+                )
+            );
+
+        if (!user) {
+
+            return res.status(401).json({
+                error: 'Invalid login credentials.'
+            });
+
+        }
+
+        const valid =
+            await bcrypt.compare(
+                password,
+                user.passwordHash
+            );
+
+        if (!valid) {
+
+            return res.status(401).json({
+                error: 'Invalid login credentials.'
+            });
+
+        }
+
+        return res.json({
+
+            ok: true,
+
+            user: {
+                id: user.id,
+                name: user.name,
+                mobile: user.mobile,
+                email: user.email,
+                permanentLocation:
+                    user.permanentLocation,
+                alertPreferences:
+                    user.alertPreferences
+            }
+
+        });
+
+    } catch (error) {
+
+        console.error(
+            'Login error:',
+            error
+        );
+
+        return res.status(500).json({
+            error: 'Unable to login.'
+        });
+
+    }
+
+});
+
+
+
+
+
+// Update user profile
+app.put('/api/auth/profile/:id', async (req, res) => {
+
+    try {
+
+        const users = readJson(FILES.users);
+
+        const user =
+            users.find(
+                u =>
+                    String(u.id) ===
+                    String(req.params.id)
+            );
+
+        if (!user) {
+
+            return res.status(404).json({
+                error: 'User not found.'
+            });
+
+        }
+
+        const {
+            name,
+            email,
+            permanentLocation,
+            latitude,
+            longitude,
+            alertPreferences
+        } = req.body || {};
+
+        if (name !== undefined) {
+            user.name = String(name).trim();
+        }
+
+        if (email !== undefined) {
+            user.email =
+                String(email).trim().toLowerCase();
+        }
+
+        if (permanentLocation !== undefined) {
+
+            user.permanentLocation = {
+
+                name:
+                    permanentLocation?.name ||
+                    user.permanentLocation?.name ||
+                    '',
+
+                latitude:
+                    Number.isFinite(Number(latitude))
+                        ? Number(latitude)
+                        : user.permanentLocation?.latitude ?? null,
+
+                longitude:
+                    Number.isFinite(Number(longitude))
+                        ? Number(longitude)
+                        : user.permanentLocation?.longitude ?? null
+
+            };
+
+        }
+
+        if (Array.isArray(alertPreferences)) {
+            user.alertPreferences = alertPreferences;
+        }
+
+        user.updatedAt =
+            new Date().toISOString();
+
+        writeJson(
+            FILES.users,
+            users
+        );
+
+        return res.json({
+
+            ok: true,
+
+            user: {
+                id: user.id,
+                name: user.name,
+                mobile: user.mobile,
+                email: user.email,
+                permanentLocation:
+                    user.permanentLocation,
+                alertPreferences:
+                    user.alertPreferences
+            }
+
+        });
+
+    } catch (error) {
+
+        console.error(
+            'Profile update error:',
+            error
+        );
+
+        return res.status(500).json({
+            error: 'Unable to update profile.'
+        });
+
+    }
+
+});
+
+
+
+
+
+
+
+// =====================================================
+// AUTHENTICATION
+// =====================================================
+
+// REGISTER
+app.post('/api/auth/register', async (req, res) => {
+
+    try {
+
+        const {
+            name,
+            mobile,
+            email,
+            password,
+            permanentLocation,
+            latitude,
+            longitude,
+            alertPreferences
+        } = req.body || {};
+
+        if (!name || !mobile || !password) {
+            return res.status(400).json({
+                error: 'Name, mobile number and password are required.'
+            });
+        }
+
+        if (password.length < 6) {
+            return res.status(400).json({
+                error: 'Password must contain at least 6 characters.'
+            });
+        }
+
+        const users = readJson(FILES.users);
+
+        const normalizedMobile =
+            String(mobile).replace(/\s+/g, '');
+
+        const normalizedEmail =
+            email
+                ? String(email).trim().toLowerCase()
+                : '';
+
+        const existingUser = users.find(user =>
+            user.mobile === normalizedMobile ||
+            (
+                normalizedEmail &&
+                user.email === normalizedEmail
+            )
+        );
+
+        if (existingUser) {
+            return res.status(409).json({
+                error:
+                    'An account with this mobile number or email already exists.'
+            });
+        }
+
+        const passwordHash =
+            await bcrypt.hash(password, 12);
+
+        const user = {
+
+            id:
+                `USER-${Date.now()}-${crypto.randomBytes(3).toString('hex')}`,
+
+            name:
+                String(name).trim(),
+
+            mobile:
+                normalizedMobile,
+
+            email:
+                normalizedEmail,
+
+            passwordHash:
+
+                passwordHash,
+
+            permanentLocation: {
+
+                name:
+                    permanentLocation?.name || '',
+
+                latitude:
+                    Number.isFinite(Number(latitude))
+                        ? Number(latitude)
+                        : null,
+
+                longitude:
+                    Number.isFinite(Number(longitude))
+                        ? Number(longitude)
+                        : null
+            },
+
+            alertPreferences:
+                Array.isArray(alertPreferences)
+                    ? alertPreferences
+                    : [
+                        'heavy_rain',
+                        'flood',
+                        'landslide',
+                        'thunderstorm'
+                    ],
+
+            createdAt:
+                new Date().toISOString(),
+
+            status:
+                'ACTIVE'
+        };
+
+        pushRecord(
+            FILES.users,
+            user,
+            10000
+        );
+
+        return res.status(201).json({
+
+            ok: true,
+
+            user: {
+
+                id: user.id,
+
+                name: user.name,
+
+                mobile: user.mobile,
+
+                email: user.email,
+
+                permanentLocation:
+                    user.permanentLocation,
+
+                alertPreferences:
+                    user.alertPreferences
+
+            }
+
+        });
+
+    } catch (error) {
+
+        console.error(
+            'Registration error:',
+            error
+        );
+
+        return res.status(500).json({
+            error: 'Unable to create account.'
+        });
+
+    }
+
+});
+
+
+// LOGIN
+app.post('/api/auth/login', async (req, res) => {
+
+    try {
+
+        const {
+            identifier,
+            password
+        } = req.body || {};
+
+        if (!identifier || !password) {
+
+            return res.status(400).json({
+                error:
+                    'Mobile/email and password are required.'
+            });
+
+        }
+
+        const users =
+            readJson(FILES.users);
+
+        const value =
+            String(identifier)
+                .trim()
+                .toLowerCase();
+
+        const user =
+            users.find(u =>
+                u.mobile === value ||
+                (
+                    u.email &&
+                    u.email.toLowerCase() === value
+                )
+            );
+
+        if (!user) {
+
+            return res.status(401).json({
+                error:
+                    'Invalid login credentials.'
+            });
+
+        }
+
+        const valid =
+            await bcrypt.compare(
+                password,
+                user.passwordHash
+            );
+
+        if (!valid) {
+
+            return res.status(401).json({
+                error:
+                    'Invalid login credentials.'
+            });
+
+        }
+
+        return res.json({
+
+            ok: true,
+
+            user: {
+
+                id: user.id,
+
+                name: user.name,
+
+                mobile: user.mobile,
+
+                email: user.email,
+
+                permanentLocation:
+                    user.permanentLocation,
+
+                alertPreferences:
+                    user.alertPreferences
+
+            }
+
+        });
+
+    } catch (error) {
+
+        console.error(
+            'Login error:',
+            error
+        );
+
+        return res.status(500).json({
+            error: 'Unable to login.'
+        });
+
+    }
+
+});
+
+
+
+
+
+
+
+
+
 
 
 // =====================================================
