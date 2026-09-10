@@ -2215,3 +2215,664 @@ button { cursor: pointer; }
     #disasterMap { min-height:470px; }
     .rn-factor { grid-template-columns:90px 1fr 54px; }
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+/* ==========================================================
+   RAKSHANET AUTHENTICATION
+   Registration / Login
+   ========================================================== */
+
+.rn-auth-page {
+    min-height: calc(100vh - 76px);
+    padding: 60px 6%;
+    background:
+        radial-gradient(
+            circle at 15% 20%,
+            rgba(37, 214, 162, 0.10),
+            transparent 30%
+        ),
+        radial-gradient(
+            circle at 85% 70%,
+            rgba(69, 163, 255, 0.10),
+            transparent 30%
+        ),
+        #07111f;
+}
+
+.rn-auth-shell {
+    max-width: 1150px;
+    margin: auto;
+
+    display: grid;
+    grid-template-columns: .85fr 1.15fr;
+
+    gap: 30px;
+
+    align-items: start;
+}
+
+.rn-auth-intro {
+    padding: 35px 10px;
+}
+
+.rn-auth-intro h1 {
+    font-size: clamp(48px, 5vw, 72px);
+    line-height: 1;
+    letter-spacing: -3px;
+    margin: 25px 0;
+}
+
+.rn-auth-intro h1 span {
+    color: var(--rn-green);
+}
+
+.rn-auth-intro > p {
+    color: #94a3b8;
+    max-width: 510px;
+    font-size: 16px;
+    line-height: 1.8;
+}
+
+.rn-auth-features {
+    display: grid;
+    gap: 14px;
+    margin-top: 35px;
+}
+
+.rn-auth-feature {
+    display: flex;
+    align-items: flex-start;
+    gap: 14px;
+
+    padding: 15px;
+
+    background: rgba(255,255,255,.035);
+    border: 1px solid rgba(255,255,255,.07);
+    border-radius: 14px;
+}
+
+.rn-auth-feature > span {
+    font-size: 25px;
+}
+
+.rn-auth-feature strong {
+    display: block;
+    margin-bottom: 3px;
+}
+
+.rn-auth-feature small {
+    display: block;
+    color: #94a3b8;
+    line-height: 1.5;
+}
+
+.rn-auth-card {
+    background: rgba(17,24,39,.94);
+
+    border:
+        1px solid
+        rgba(255,255,255,.09);
+
+    border-radius: 20px;
+
+    padding: 30px;
+
+    box-shadow:
+        0 25px 70px rgba(0,0,0,.25);
+}
+
+.rn-auth-header {
+    margin-bottom: 25px;
+}
+
+.rn-auth-header .section-label {
+    color: var(--rn-green);
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 2px;
+}
+
+.rn-auth-header h2 {
+    font-size: 30px;
+    margin: 8px 0;
+}
+
+.rn-auth-header p {
+    color: #94a3b8;
+    font-size: 14px;
+}
+
+.rn-auth-field {
+    margin-bottom: 17px;
+}
+
+.rn-auth-field > label {
+    display: block;
+    font-size: 13px;
+    font-weight: 700;
+    margin-bottom: 7px;
+}
+
+.rn-auth-field small {
+    display: block;
+    margin-top: 6px;
+    color: #64748b;
+    font-size: 11px;
+}
+
+.rn-auth-optional {
+    color: #64748b;
+    font-weight: 400;
+}
+
+.rn-auth-location,
+.rn-auth-alerts {
+    margin-top: 25px;
+
+    padding: 18px;
+
+    border-radius: 15px;
+
+    background: rgba(255,255,255,.025);
+    border: 1px solid rgba(255,255,255,.07);
+}
+
+.rn-auth-section-title {
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+    margin-bottom: 15px;
+}
+
+.rn-auth-section-title > span {
+    font-size: 24px;
+}
+
+.rn-auth-section-title strong {
+    display: block;
+}
+
+.rn-auth-section-title small {
+    display: block;
+    color: #64748b;
+    margin-top: 3px;
+    font-size: 11px;
+}
+
+.rn-auth-location-search {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 8px;
+}
+
+.rn-auth-location-results {
+    display: grid;
+    gap: 7px;
+    margin-top: 10px;
+}
+
+.rn-location-result {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+
+    width: 100%;
+
+    padding: 11px;
+
+    background: rgba(255,255,255,.035);
+
+    border:
+        1px solid
+        rgba(255,255,255,.07);
+
+    color: white;
+
+    border-radius: 10px;
+
+    text-align: left;
+}
+
+.rn-location-result:hover {
+    border-color: var(--rn-green);
+    background: rgba(37,214,162,.06);
+}
+
+.rn-location-result strong {
+    display: block;
+}
+
+.rn-location-result small {
+    display: block;
+    color: #94a3b8;
+    margin-top: 2px;
+    line-height: 1.4;
+}
+
+.rn-auth-location-message {
+    padding: 10px;
+    color: #94a3b8;
+    font-size: 12px;
+}
+
+.rn-auth-location-message.danger {
+    color: #f87171;
+}
+
+.rn-auth-selected-location {
+    margin-top: 10px;
+
+    padding: 12px;
+
+    background: rgba(37,214,162,.07);
+
+    border:
+        1px solid
+        rgba(37,214,162,.18);
+
+    border-radius: 10px;
+
+    color: #d1fae5;
+
+    font-size: 12px;
+}
+
+.rn-auth-selected-location strong {
+    display: block;
+}
+
+.rn-auth-selected-location small {
+    display: block;
+    margin-top: 4px;
+    color: #94a3b8;
+}
+
+.rn-alert-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0,1fr));
+    gap: 8px;
+}
+
+.rn-alert-option {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+
+    padding: 10px;
+
+    background: rgba(255,255,255,.035);
+
+    border:
+        1px solid
+        rgba(255,255,255,.07);
+
+    border-radius: 10px;
+
+    cursor: pointer;
+
+    font-size: 12px;
+}
+
+.rn-alert-option:hover {
+    border-color: var(--rn-green);
+}
+
+.rn-alert-option input {
+    width: auto;
+}
+
+.rn-auth-consent {
+    display: flex;
+    align-items: flex-start;
+    gap: 9px;
+
+    margin: 22px 0;
+
+    color: #94a3b8;
+
+    font-size: 11px;
+
+    line-height: 1.5;
+
+    cursor: pointer;
+}
+
+.rn-auth-consent input {
+    width: auto;
+    margin-top: 2px;
+}
+
+.rn-auth-status {
+    display: none;
+
+    padding: 12px;
+
+    border-radius: 10px;
+
+    margin-bottom: 12px;
+
+    font-size: 12px;
+}
+
+.rn-auth-status.success {
+    display: block;
+
+    color: #86efac;
+    background: rgba(34,197,94,.08);
+    border: 1px solid rgba(34,197,94,.18);
+}
+
+.rn-auth-status.danger {
+    display: block;
+
+    color: #fca5a5;
+    background: rgba(230,57,70,.08);
+    border: 1px solid rgba(230,57,70,.18);
+}
+
+.rn-auth-submit {
+    width: 100%;
+    padding: 15px;
+    font-size: 14px;
+}
+
+.rn-auth-login-text {
+    text-align: center;
+    margin-top: 17px;
+    color: #64748b;
+    font-size: 12px;
+}
+
+.rn-auth-login-text a {
+    color: var(--rn-green);
+    text-decoration: none;
+    font-weight: 700;
+}
+
+.rn-auth-login-text a:hover {
+    text-decoration: underline;
+}
+
+
+/* AUTH MOBILE */
+
+@media (max-width: 900px) {
+
+    .rn-auth-shell {
+        grid-template-columns: 1fr;
+    }
+
+    .rn-auth-intro {
+        padding-bottom: 0;
+    }
+
+}
+
+@media (max-width: 600px) {
+
+    .rn-auth-page {
+        padding: 35px 5%;
+    }
+
+    .rn-auth-card {
+        padding: 20px;
+    }
+
+    .rn-auth-intro h1 {
+        font-size: 48px;
+    }
+
+    .rn-auth-location-search {
+        grid-template-columns: 1fr;
+    }
+
+    .rn-alert-grid {
+        grid-template-columns: 1fr;
+    }
+
+}
+
+
+
+
+
+
+
+
+
+/* ==========================================================
+   RAKSHANET PROFILE
+   ========================================================== */
+
+.rn-profile-page {
+    min-height: calc(100vh - 76px);
+    padding: 60px 6%;
+    background:
+        radial-gradient(
+            circle at 10% 10%,
+            rgba(37,214,162,.08),
+            transparent 30%
+        ),
+        #07111f;
+}
+
+.rn-profile-header {
+    max-width: 1100px;
+    margin: 0 auto 30px;
+
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+
+    gap: 20px;
+}
+
+.rn-profile-header h1 {
+    font-size: clamp(38px, 5vw, 58px);
+    line-height: 1;
+    margin: 10px 0;
+}
+
+.rn-profile-header p {
+    color: #94a3b8;
+}
+
+.rn-profile-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+
+    padding: 9px 13px;
+
+    border-radius: 999px;
+
+    background: rgba(37,214,162,.08);
+    border: 1px solid rgba(37,214,162,.18);
+
+    color: #5eead4;
+
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.rn-profile-grid {
+    max-width: 1100px;
+    margin: auto;
+
+    display: grid;
+
+    grid-template-columns:
+        repeat(2, minmax(0,1fr));
+
+    gap: 18px;
+}
+
+.rn-profile-grid .rn-card {
+    min-height: 180px;
+}
+
+.rn-profile-info {
+    display: grid;
+    gap: 14px;
+    margin-top: 18px;
+}
+
+.rn-profile-info > div {
+    padding: 12px;
+
+    border-radius: 10px;
+
+    background:
+        rgba(255,255,255,.035);
+
+    border:
+        1px solid
+        rgba(255,255,255,.06);
+}
+
+.rn-profile-info span {
+    display: block;
+
+    color: #64748b;
+
+    font-size: 11px;
+
+    margin-bottom: 3px;
+}
+
+.rn-profile-info strong {
+    display: block;
+
+    font-size: 14px;
+
+    word-break: break-word;
+}
+
+.rn-profile-location {
+    margin-top: 17px;
+
+    padding: 16px;
+
+    border-radius: 12px;
+
+    background:
+        rgba(37,214,162,.06);
+
+    border:
+        1px solid
+        rgba(37,214,162,.15);
+}
+
+.rn-profile-location strong {
+    display: block;
+
+    color: #d1fae5;
+}
+
+.rn-profile-location small {
+    display: block;
+
+    margin-top: 8px;
+
+    color: #94a3b8;
+
+    line-height: 1.6;
+}
+
+.rn-profile-alert-card {
+    grid-column: 1 / -1;
+}
+
+.rn-profile-alerts {
+    display: flex;
+
+    flex-wrap: wrap;
+
+    gap: 9px;
+
+    margin-top: 17px;
+}
+
+.rn-profile-alert {
+    display: inline-flex;
+    align-items: center;
+
+    padding: 9px 12px;
+
+    border-radius: 999px;
+
+    background:
+        rgba(37,214,162,.08);
+
+    border:
+        1px solid
+        rgba(37,214,162,.15);
+
+    color: #d1fae5;
+
+    font-size: 12px;
+}
+
+.rn-profile-warning {
+    max-width: 1100px;
+
+    margin: 20px auto 0;
+
+    display: flex;
+
+    gap: 18px;
+
+    align-items: flex-start;
+
+    border-color:
+        rgba(69,163,255,.18);
+}
+
+.rn-warning-icon {
+    font-size: 42px;
+}
+
+.rn-profile-warning h2 {
+    margin: 6px 0 8px;
+}
+
+.rn-profile-warning p {
+    color: #94a3b8;
+
+    max-width: 800px;
+
+    font-size: 14px;
+}
+
+@media (max-width: 750px) {
+
+    .rn-profile-header {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .rn-profile-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .rn-profile-alert-card {
+        grid-column: auto;
+    }
+
+    .rn-profile-warning {
+        flex-direction: column;
+    }
+
+}

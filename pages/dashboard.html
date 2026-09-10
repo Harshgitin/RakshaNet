@@ -10,7 +10,38 @@
 </style>
 </head>
 <body>
-<header class="navbar"><div class="logo"><span class="logo-icon">🛡️</span><span>Raksha<span class="logo-highlight">Net</span></span></div><nav class="nav-links"><a href="../index.html">Home</a><a href="map.html">Live Map</a><a href="emergency.html">Report</a><a href="help.html">Emergency Help</a><a href="dashboard.html" class="active">Dashboard</a></nav></header>
+
+
+
+
+    <header class="navbar">
+    <div class="logo">
+        <span class="logo-icon">🛡️</span>
+        <span>Raksha<span class="logo-highlight">Net</span></span>
+    </div>
+
+    <nav class="nav-links">
+        <a href="../index.html">Home</a>
+        <a href="map.html">Live Map</a>
+        <a href="dashboard.html" class="active">Dashboard</a>
+        <a href="../index.html#prediction">AI Prediction</a>
+        <a href="help.html">Emergency Help</a>
+        <a href="../index.html#services">Services</a>
+        <a href="../index.html#alerts">Alerts</a>
+    </nav>
+
+    <div class="nav-actions">
+       <a href="login.html" class="login-btn rn-auth-btn">
+    🔐 Register / Login
+</a>
+        <a href="emergency.html" class="emergency-nav-btn">🚨 Emergency</a>
+    </div>
+</header>
+
+
+
+
+
 <main><section class="emergency-page"><div class="emergency-header"><span class="emergency-label">🎯 RESPONSE OPERATIONS</span><h1>Responder Dashboard</h1><p>Manage emergency reports, SOS requests and volunteer records stored by the RakshaNet backend.</p></div>
 <div class="rn-toolbar"><button class="rn-btn clear" id="clearResolved">🗑️ Clear Resolved Reports</button><button class="rn-btn delete" id="clearAllReports">⚠️ Delete All Reports</button><button class="rn-btn" id="refreshDash">↻ Refresh</button></div>
 <div id="dashMessage"></div>

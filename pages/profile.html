@@ -1,0 +1,512 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+
+    <meta charset="UTF-8">
+
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1.0"
+    >
+
+    <title>My Profile | RakshaNet</title>
+
+    <link
+        rel="stylesheet"
+        href="../css/style.css"
+    >
+
+</head>
+
+<body>
+
+
+
+
+
+<header class="navbar">
+    <div class="logo">
+        <span class="logo-icon">🛡️</span>
+        <span>Raksha<span class="logo-highlight">Net</span></span>
+    </div>
+
+    <nav class="nav-links">
+        <a href="../index.html">Home</a>
+        <a href="map.html">Live Map</a>
+        <a href="dashboard.html">Dashboard</a>
+        <a href="../index.html#prediction">AI Prediction</a>
+        <a href="help.html">Emergency Help</a>
+        <a href="../index.html#services">Services</a>
+        <a href="../index.html#alerts">Alerts</a>
+    </nav>
+
+    <div class="nav-actions">
+        <a href="profile.html" class="login-btn rn-auth-btn">👤 My Profile</a>
+        <a href="emergency.html" class="emergency-nav-btn">🚨 Emergency</a>
+    </div>
+</header>
+
+
+
+
+
+
+
+
+    <!-- =========================
+         PROFILE
+    ========================== -->
+
+    <main class="rn-profile-page">
+
+        <div class="rn-profile-header">
+
+            <div>
+
+                <span class="section-label">
+                    MY RAKSHANET
+                </span>
+
+                <h1>
+                    Your Emergency Profile
+                </h1>
+
+                <p>
+                    Manage your registered location and
+                    disaster alert preferences.
+                </p>
+
+            </div>
+
+
+            <div class="rn-profile-status">
+                <span class="rn-dot"></span>
+                Account Active
+            </div>
+
+        </div>
+
+
+        <div class="rn-profile-grid">
+
+
+            <!-- =========================
+                 USER DETAILS
+            ========================== -->
+
+            <section class="rn-card">
+
+                <h3>
+                    👤 Personal Information
+                </h3>
+
+                <div class="rn-profile-info">
+
+                    <div>
+                        <span>Name</span>
+                        <strong id="profileName">
+                            —
+                        </strong>
+                    </div>
+
+                    <div>
+                        <span>Mobile</span>
+                        <strong id="profileMobile">
+                            —
+                        </strong>
+                    </div>
+
+                    <div>
+                        <span>Email</span>
+                        <strong id="profileEmail">
+                            —
+                        </strong>
+                    </div>
+
+                </div>
+
+            </section>
+
+
+            <!-- =========================
+                 LOCATION
+            ========================== -->
+
+            <section class="rn-card">
+
+                <h3>
+                    📍 Permanent Location
+                </h3>
+
+                <div
+                    id="profileLocation"
+                    class="rn-profile-location"
+                >
+
+                    Loading location...
+
+                </div>
+
+                <p class="rn-small">
+                    RakshaNet uses this registered location
+                    to determine relevant disaster warnings.
+                </p>
+
+            </section>
+
+
+            <!-- =========================
+                 ALERTS
+            ========================== -->
+
+            <section class="rn-card rn-profile-alert-card">
+
+                <h3>
+                    🔔 Your Alert Subscriptions
+                </h3>
+
+                <p class="rn-muted">
+                    Hazards currently selected for monitoring.
+                </p>
+
+
+                <div
+                    id="profileAlerts"
+                    class="rn-profile-alerts"
+                >
+                </div>
+
+            </section>
+
+
+            <!-- =========================
+                 ACCOUNT ACTIONS
+            ========================== -->
+
+            <section class="rn-card">
+
+                <h3>
+                    ⚙️ Account
+                </h3>
+
+                <div class="rn-actions">
+
+                    <a
+                        href="map.html"
+                        class="rn-btn blue"
+                        style="text-decoration:none;"
+                    >
+                        🗺️ Open Live Map
+                    </a>
+
+                    <a
+                        href="../index.html#prediction"
+                        class="rn-btn"
+                        style="text-decoration:none;"
+                    >
+                        🤖 AI Prediction
+                    </a>
+
+                    <button
+                        id="logoutButton"
+                        class="rn-btn danger"
+                    >
+                        Logout
+                    </button>
+
+                </div>
+
+            </section>
+
+        </div>
+
+
+        <!-- =========================
+             SMS EARLY WARNING
+        ========================== -->
+
+        <section class="rn-card rn-profile-warning">
+
+            <div class="rn-warning-icon">
+                📱
+            </div>
+
+            <div>
+
+                <span class="section-label">
+                    EARLY WARNING NETWORK
+                </span>
+
+                <h2>
+                    SMS Disaster Alerts
+                </h2>
+
+                <p>
+
+                    Your account is registered for location-based
+                    disaster monitoring. RakshaNet will use your
+                    selected location and alert preferences when
+                    the warning engine is connected to the SMS
+                    delivery service.
+
+                </p>
+
+                <div class="rn-live-strip">
+
+                    <span class="rn-chip">
+                        <span class="rn-dot"></span>
+                        Location Registered
+                    </span>
+
+                    <span class="rn-chip">
+                        🔔 Alert Preferences Saved
+                    </span>
+
+                    <span class="rn-chip">
+                        📱 SMS Integration
+                        <strong style="margin-left:4px;">
+                            Preparing
+                        </strong>
+                    </span>
+
+                </div>
+
+            </div>
+
+        </section>
+
+    </main>
+
+
+    <script>
+
+        // =====================================================
+        // LOAD USER
+        // =====================================================
+
+        const userRaw =
+            localStorage.getItem(
+                "rakshanet_user"
+            );
+
+
+        if (!userRaw) {
+
+            window.location.href =
+                "login.html";
+
+        }
+
+
+        let user = null;
+
+
+        try {
+
+            user =
+                JSON.parse(userRaw);
+
+        }
+
+        catch (error) {
+
+            localStorage.removeItem(
+                "rakshanet_user"
+            );
+
+            window.location.href =
+                "login.html";
+
+        }
+
+
+        // =====================================================
+        // PERSONAL INFORMATION
+        // =====================================================
+
+        if (user) {
+
+            document.getElementById(
+                "profileName"
+            ).textContent =
+                user.name || "—";
+
+
+            document.getElementById(
+                "profileMobile"
+            ).textContent =
+                user.mobile || "—";
+
+
+            document.getElementById(
+                "profileEmail"
+            ).textContent =
+                user.email || "Not provided";
+
+
+            // LOCATION
+
+            const location =
+                user.permanentLocation || {};
+
+
+            document.getElementById(
+                "profileLocation"
+            ).innerHTML = `
+
+                <strong>
+                    📍 ${escapeHTML(
+                        location.name ||
+                        "Location not available"
+                    )}
+                </strong>
+
+                ${
+                    Number.isFinite(
+                        Number(location.latitude)
+                    ) &&
+                    Number.isFinite(
+                        Number(location.longitude)
+                    )
+                    ?
+                    `
+                        <small>
+                            Latitude:
+                            ${Number(location.latitude).toFixed(6)}
+                            <br>
+                            Longitude:
+                            ${Number(location.longitude).toFixed(6)}
+                        </small>
+                    `
+                    :
+                    ""
+                }
+
+            `;
+
+
+            // ALERTS
+
+            const preferences =
+                Array.isArray(
+                    user.alertPreferences
+                )
+                ?
+                user.alertPreferences
+                :
+                [];
+
+
+            const alertNames = {
+
+                heavy_rain:
+                    "🌧️ Heavy Rainfall",
+
+                flood:
+                    "🌊 Flood",
+
+                landslide:
+                    "⛰️ Landslide",
+
+                thunderstorm:
+                    "⛈️ Thunderstorm",
+
+                extreme_heat:
+                    "☀️ Extreme Heat",
+
+                cyclone:
+                    "🌀 Cyclone"
+
+            };
+
+
+            const alertsBox =
+                document.getElementById(
+                    "profileAlerts"
+                );
+
+
+            if (!preferences.length) {
+
+                alertsBox.innerHTML =
+                    `
+                    <div class="rn-muted">
+                        No alerts selected.
+                    </div>
+                    `;
+
+            }
+
+            else {
+
+                alertsBox.innerHTML =
+                    preferences.map(
+                        preference => `
+
+                            <span
+                                class="rn-profile-alert"
+                            >
+                                ${
+                                    escapeHTML(
+                                        alertNames[
+                                            preference
+                                        ] ||
+                                        preference
+                                    )
+                                }
+                            </span>
+
+                        `
+                    ).join("");
+
+            }
+
+        }
+
+
+        // =====================================================
+        // LOGOUT
+        // =====================================================
+
+        document
+            .getElementById("logoutButton")
+            .addEventListener(
+                "click",
+                () => {
+
+                    localStorage.removeItem(
+                        "rakshanet_user"
+                    );
+
+                    window.location.href =
+                        "login.html";
+
+                }
+            );
+
+
+        // =====================================================
+        // SECURITY HELPER
+        // =====================================================
+
+        function escapeHTML(value) {
+
+            return String(value ?? "")
+                .replace(
+                    /[&<>'"]/g,
+                    char =>
+                        ({
+                            "&": "&amp;",
+                            "<": "&lt;",
+                            ">": "&gt;",
+                            "'": "&#39;",
+                            '"': "&quot;"
+                        })[char]
+                );
+
+        }
+
+    </script>
+
+</body>
+</html>
