@@ -732,9 +732,7 @@ app.post(
 
         try {
 
-            const query =
-                req.body?.query;
-
+            const query = req.body?.query;
 
             if (
                 !query ||
@@ -742,89 +740,130 @@ app.post(
             ) {
 
                 return res.status(400).json({
-
-                    error:
-                        'Valid Overpass query is required.'
-
+                    error: 'Valid Overpass query is required.'
                 });
 
             }
 
+            // Try multiple Overpass servers.
+            // If one is unavailable, RakshaNet automatically
+            // tries the next one.
 
-            const response =
-                await fetch(
-                    'https://overpass-api.de/api/interpreter',
-                    {
+            const overpassServers = [
 
-                        method: 'POST',
+                'https://overpass-api.de/api/interpreter',
 
-                        headers: {
+                'https://overpass.kumi.systems/api/interpreter',
 
-                            'Content-Type':
-                                'application/x-www-form-urlencoded',
+                'https://overpass.private.coffee/api/interpreter'
 
-                            'User-Agent':
-                                'RakshaNet/1.0',
+            ];
 
-                            'Accept':
-                                'application/json'
+            let lastError = null;
 
-                        },
+            for (const endpoint of overpassServers) {
 
-                        body:
-                            new URLSearchParams({
-                                data: query
-                            })
+                try {
+
+                    console.log(
+                        'Trying Overpass:',
+                        endpoint
+                    );
+
+                    const response = await fetch(
+                        endpoint,
+                        {
+                            method: 'POST',
+
+                            headers: {
+                                'Content-Type':
+                                    'application/x-www-form-urlencoded',
+
+                                'User-Agent':
+                                    'RakshaNet/1.0',
+
+                                'Accept':
+                                    'application/json'
+                            },
+
+                            body:
+                                new URLSearchParams({
+                                    data: query
+                                }),
+
+                            signal:
+                                AbortSignal.timeout(25000)
+                        }
+                    );
+
+                    const text =
+                        await response.text();
+
+                    if (!response.ok) {
+
+                        throw new Error(
+                            `HTTP ${response.status}: ${text.slice(0, 300)}`
+                        );
 
                     }
-                );
 
+                    console.log(
+                        'Overpass success:',
+                        endpoint
+                    );
 
-            const text =
-                await response.text();
+                    return res
+                        .status(200)
+                        .type('application/json')
+                        .send(text);
 
+                }
 
-            if (!response.ok) {
+                catch (error) {
 
-                console.error(
-                    'Overpass returned:',
-                    response.status,
-                    text
-                );
+                    console.warn(
+                        'Overpass failed:',
+                        endpoint,
+                        error.message
+                    );
 
-                return res.status(
-                    response.status
-                ).json({
+                    lastError = error;
 
-                    error:
-                        'Overpass request failed.',
-
-                    upstreamStatus:
-                        response.status
-
-                });
+                }
 
             }
 
+            console.error(
+                'All Overpass servers failed:',
+                lastError?.message
+            );
 
-            res
-                .status(200)
-                .type('application/json')
-                .send(text);
+            return res.status(502).json({
 
+                error:
+                    'All GIS services are currently unavailable.',
 
-        } catch (error) {
+                details:
+                    lastError?.message || 'Unknown error'
+
+            });
+
+        }
+
+        catch (error) {
 
             console.error(
-                'Overpass proxy error:',
+                'GIS proxy error:',
                 error
             );
 
-
-            res.status(502).json({
+            res.status(500).json({
 
                 error:
-                    'Unable to reach GIS service.'
+                    'GIS proxy failed.',
+
+                details:
+                    error.message
 
             });
 
