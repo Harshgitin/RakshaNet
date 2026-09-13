@@ -2525,9 +2525,20 @@ app.get(
 );
 
 
+
+
+
+
+
 // =====================================================
 // LIVE OVERPASS GIS PROXY
 // Browser -> RakshaNet -> Overpass
+//
+// Fast multi-provider strategy:
+// - Query multiple Overpass servers in parallel
+// - Return the first successful response
+// - Each provider has a short timeout
+// - A slow provider does not block the others
 // =====================================================
 
 app.post(
@@ -2549,9 +2560,9 @@ app.post(
 
             }
 
-            // Try multiple Overpass servers.
-            // If one is unavailable, RakshaNet automatically
-            // tries the next one.
+            // -------------------------------------------------
+            // Overpass providers
+            // -------------------------------------------------
 
             const overpassServers = [
 
@@ -2563,18 +2574,19 @@ app.post(
 
             ];
 
-            let lastError = null;
+            // -------------------------------------------------
+            // Request helper
+            // -------------------------------------------------
 
-            for (const endpoint of overpassServers) {
+            async function requestOverpass(endpoint) {
 
-                try {
+                console.log(
+                    'Trying Overpass:',
+                    endpoint
+                );
 
-                    console.log(
-                        'Trying Overpass:',
-                        endpoint
-                    );
-
-                    const response = await fetch(
+                const response =
+                    await fetch(
                         endpoint,
                         {
                             method: 'POST',
@@ -2595,73 +2607,110 @@ app.post(
                                     data: query
                                 }),
 
+                            // Much faster failure handling
                             signal:
-                                AbortSignal.timeout(25000)
+                                AbortSignal.timeout(10000)
                         }
                     );
 
-                    const text =
-                        await response.text();
+                const text =
+                    await response.text();
 
-                    if (!response.ok) {
+                if (!response.ok) {
 
-                        throw new Error(
-                            `HTTP ${response.status}: ${text.slice(0, 300)}`
-                        );
-
-                    }
-
-                    console.log(
-                        'Overpass success:',
-                        endpoint
+                    throw new Error(
+                        `HTTP ${response.status}: ${text.slice(0, 300)}`
                     );
-
-                    return res
-                        .status(200)
-                        .type('application/json')
-                        .send(text);
 
                 }
 
-                catch (error) {
+                if (!text.trim()) {
 
-                    console.warn(
-                        'Overpass failed:',
-                        endpoint,
-                        error.message
+                    throw new Error(
+                        'Empty response from Overpass provider.'
                     );
 
-                    lastError = error;
-
                 }
+
+                console.log(
+                    'Overpass success:',
+                    endpoint
+                );
+
+                return text;
 
             }
 
-            console.error(
-                'All Overpass servers failed:',
-                lastError?.message
-            );
+            // -------------------------------------------------
+            // Run all providers in parallel
+            // -------------------------------------------------
 
-            return res.status(502).json({
+            const requests =
+                overpassServers.map(
+                    endpoint =>
+                        requestOverpass(endpoint)
+                );
 
-                error:
-                    'All GIS services are currently unavailable.',
+            // -------------------------------------------------
+            // Return the first successful provider
+            // -------------------------------------------------
 
-                details:
-                    lastError?.message || 'Unknown error'
+            try {
 
-            });
+                const text =
+                    await Promise.any(requests);
 
-        }
+                return res
+                    .status(200)
+                    .type('application/json')
+                    .send(text);
 
-        catch (error) {
+            } catch (aggregateError) {
+
+                console.error(
+                    'All Overpass providers failed.'
+                );
+
+                if (
+                    aggregateError &&
+                    Array.isArray(
+                        aggregateError.errors
+                    )
+                ) {
+
+                    aggregateError.errors.forEach(
+                        (error, index) => {
+
+                            console.warn(
+                                `Overpass provider ${index + 1} failed:`,
+                                error?.message
+                            );
+
+                        }
+                    );
+
+                }
+
+                return res.status(502).json({
+
+                    error:
+                        'All GIS services are currently unavailable.',
+
+                    details:
+                        'All Overpass providers timed out or returned an error.'
+
+                });
+
+            }
+
+        } catch (error) {
 
             console.error(
                 'GIS proxy error:',
                 error
             );
 
-            res.status(500).json({
+            return res.status(500).json({
 
                 error:
                     'GIS proxy failed.',
@@ -2676,6 +2725,12 @@ app.post(
     }
 );
 
+
+
+
+
+
+      
 
 // =====================================================
 // STATIC WEBSITE
