@@ -1,3 +1,6 @@
+require('dotenv').config();
+
+
 const express = require('express');
 const fs = require('fs');
 const path = require('path');
@@ -5,8 +8,79 @@ const multer = require('multer');
 const cors = require('cors');
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
+const ort = require('onnxruntime-node');
+const jwt = require('jsonwebtoken');
+const { Pool } = require('pg');
+const {
+    createClient
+} = require('@supabase/supabase-js');
 
 const ROOT = __dirname;
+const supabaseAdmin =
+    createClient(
+        process.env.SUPABASE_URL,
+        process.env.SUPABASE_SECRET_KEY,
+        {
+            auth: {
+                autoRefreshToken: false,
+                persistSession: false,
+                detectSessionInUrl: false
+            }
+        }
+    );
+
+
+const pool = new Pool({
+    connectionString: process.env.DATABASE_URL,
+    ssl: {
+        rejectUnauthorized: false
+    }
+});
+
+pool.on('error', (error) => {
+    console.error('PostgreSQL pool error:', error);
+});
+// =====================================================
+// MACHINE LEARNING MODEL
+// =====================================================
+
+const ML_MODEL_FILE = path.join(
+    ROOT,
+    'ml',
+    'landslide_model.onnx'
+);
+
+let landslideSessionPromise = null;
+
+function getLandslideSession() {
+    if (!landslideSessionPromise) {
+        landslideSessionPromise =
+            ort.InferenceSession.create(
+                ML_MODEL_FILE
+            );
+    }
+
+    return landslideSessionPromise;
+}
+
+const LANDSLIDE_FEATURES = [
+    'rain_1d',
+    'rain_3d',
+    'rain_7d',
+    'precip_1d',
+    'precip_3d',
+    'precip_7d',
+    'precip_hours_1d',
+    'precip_hours_3d',
+    'precip_hours_7d',
+    'temp_mean',
+    'temp_max',
+    'temp_min',
+    'wind_max',
+    'latitude',
+    'longitude',
+    'month'
+];
 const DATA_DIR = path.join(ROOT, 'data');
 const UPLOAD_DIR = path.join(ROOT, 'uploads');
 
@@ -126,6 +200,7 @@ const upload = multer({
 
 app.get(
     '/api/health',
+    
     (_req, res) => {
 
         res.json({
@@ -136,6 +211,307 @@ app.get(
 
     }
 );
+
+
+
+
+
+
+
+app.get('/api/db-test', async (_req, res) => {
+    try {
+        const result = await pool.query('SELECT NOW() AS time');
+
+        res.json({
+            ok: true,
+            database: 'connected',
+            time: result.rows[0].time
+        });
+    } catch (error) {
+        console.error('Database test error:', error);
+
+        res.status(500).json({
+            ok: false,
+            database: 'connection_failed',
+            error: error.message
+        });
+    }
+});
+
+
+
+
+
+
+
+
+
+
+// =====================================================
+// AI / ML - LANDSLIDE PREDICTION
+// =====================================================
+
+app.post(
+    '/api/predict/landslide',
+    async (req, res) => {
+
+        try {
+
+            const body = req.body || {};
+
+            // -------------------------------------------------
+            // Validate all required features
+            // -------------------------------------------------
+
+            const values = LANDSLIDE_FEATURES.map(
+                feature => Number(body[feature])
+            );
+
+            const invalid = values.some(
+                value => !Number.isFinite(value)
+            );
+
+            if (invalid) {
+
+                return res.status(400).json({
+                    ok: false,
+                    error:
+                        'All landslide prediction features are required and must be numeric.',
+                    requiredFeatures:
+                        LANDSLIDE_FEATURES
+                });
+
+            }
+
+
+            // -------------------------------------------------
+            // Load model
+            // -------------------------------------------------
+
+            const session =
+                await getLandslideSession();
+
+
+            // -------------------------------------------------
+            // Prepare ONNX input
+            // -------------------------------------------------
+
+            const inputTensor =
+                new ort.Tensor(
+                    'float32',
+                    Float32Array.from(values),
+                    [1, values.length]
+                );
+
+
+            const inputName =
+                session.inputNames[0];
+
+
+            const feeds = {};
+
+            feeds[inputName] =
+                inputTensor;
+
+
+            // -------------------------------------------------
+            // Run ML model
+            // -------------------------------------------------
+
+            const results =
+                await session.run(feeds);
+
+
+            // ONNX converted Random Forest normally exposes
+            // "label" and "probabilities".
+            // We inspect the available outputs so the API
+            // remains robust to output-name differences.
+
+            const outputNames =
+                session.outputNames;
+
+
+            let label = null;
+            let probability = null;
+
+
+            for (const name of outputNames) {
+
+                const output =
+                    results[name];
+
+                if (!output) continue;
+
+
+                const data =
+                    output.data;
+
+
+                if (!data || data.length === 0) {
+                    continue;
+                }
+
+
+                // Binary probability output is
+                // normally [probability_class_0,
+                //           probability_class_1]
+
+                if (
+                    data.length >= 2 &&
+                    probability === null
+                ) {
+
+                    probability =
+                        Number(data[1]);
+
+                }
+
+
+                // Classification label
+                if (
+                    data.length === 1 &&
+                    label === null
+                ) {
+
+                    label =
+                        Number(data[0]);
+
+                }
+
+            }
+
+
+            // -------------------------------------------------
+            // Fallback probability
+            // -------------------------------------------------
+
+            if (
+                probability === null ||
+                !Number.isFinite(probability)
+            ) {
+
+                probability =
+                    label === 1
+                        ? 1
+                        : 0;
+            }
+
+
+            probability =
+                Math.max(
+                    0,
+                    Math.min(
+                        1,
+                        probability
+                    )
+                );
+
+
+            const percentage =
+                Math.round(
+                    probability * 100
+                );
+
+
+            // -------------------------------------------------
+            // Risk classification
+            // -------------------------------------------------
+
+            let risk;
+            let priority;
+
+
+            if (percentage >= 80) {
+
+                risk = 'EXTREME';
+                priority = 'P1 Critical';
+
+            } else if (percentage >= 60) {
+
+                risk = 'HIGH';
+                priority = 'P2 High';
+
+            } else if (percentage >= 35) {
+
+                risk = 'WATCH';
+                priority = 'P3 Watch';
+
+            } else {
+
+                risk = 'LOW';
+                priority = 'P4 Normal';
+            }
+
+
+            // -------------------------------------------------
+            // Response
+            // -------------------------------------------------
+
+            return res.json({
+
+                ok: true,
+
+                model: 'rakshanet-landslide-v1',
+
+                prediction: {
+
+                    landslideProbability:
+                        Number(
+                            probability.toFixed(4)
+                        ),
+
+                    percentage,
+
+                    risk,
+
+                    priority,
+
+                    predictedClass:
+                        percentage >= 50
+                            ? 1
+                            : 0
+                },
+
+                features: Object.fromEntries(
+                    LANDSLIDE_FEATURES.map(
+                        (feature, index) => [
+                            feature,
+                            values[index]
+                        ]
+                    )
+                ),
+
+                message:
+                    'Preliminary ML-based landslide risk estimate. Follow official warnings and local authorities for emergency decisions.'
+            });
+
+
+        } catch (error) {
+
+            console.error(
+                'Landslide ML prediction error:',
+                error
+            );
+
+
+            return res.status(500).json({
+
+                ok: false,
+
+                error:
+                    'Unable to run landslide prediction.',
+
+                details:
+                    error.message
+            });
+        }
+    }
+);
+
+
+
+
+
 
 
 
@@ -172,85 +548,107 @@ app.post('/api/auth/register', async (req, res) => {
             });
         }
 
-        const users = readJson(FILES.users);
+        const normalizedMobile =
+            String(mobile).replace(/\s+/g, '');
 
-        const normalizedMobile = String(mobile).replace(/\s+/g, '');
+        const normalizedEmail =
+            email
+                ? String(email).trim().toLowerCase()
+                : null;
 
-        const existingUser = users.find(
-            user =>
-                user.mobile === normalizedMobile ||
-                (
-                    email &&
-                    user.email &&
-                    user.email.toLowerCase() ===
-                    String(email).toLowerCase()
-                )
+        // Check Supabase for an existing account
+        const existingUser = await pool.query(
+            `
+            SELECT id
+            FROM public.users
+            WHERE mobile = $1
+               OR (
+                    $2::text IS NOT NULL
+                    AND email IS NOT NULL
+                    AND LOWER(email) = LOWER($2)
+               )
+            LIMIT 1
+            `,
+            [
+                normalizedMobile,
+                normalizedEmail
+            ]
         );
 
-        if (existingUser) {
+        if (existingUser.rows.length > 0) {
             return res.status(409).json({
-                error: 'An account with this mobile number or email already exists.'
+                error:
+                    'An account with this mobile number or email already exists.'
             });
         }
 
         const passwordHash =
             await bcrypt.hash(password, 12);
 
-        const user = {
+        const userId =
+            `USER-${Date.now()}-${crypto.randomBytes(3).toString('hex')}`;
 
-            id: `USER-${Date.now()}-${crypto.randomBytes(3).toString('hex')}`,
+        const location = {
+            name:
+                permanentLocation?.name || '',
 
-            name: String(name).trim(),
+            latitude:
+                Number.isFinite(Number(latitude))
+                    ? Number(latitude)
+                    : null,
 
-            mobile: normalizedMobile,
-
-            email:
-                email
-                    ? String(email).trim().toLowerCase()
-                    : '',
-
-            passwordHash,
-
-            permanentLocation: {
-
-                name:
-                    permanentLocation?.name ||
-                    '',
-
-                latitude:
-                    Number.isFinite(Number(latitude))
-                        ? Number(latitude)
-                        : null,
-
-                longitude:
-                    Number.isFinite(Number(longitude))
-                        ? Number(longitude)
-                        : null
-
-            },
-
-            alertPreferences:
-                Array.isArray(alertPreferences)
-                    ? alertPreferences
-                    : [
-                        'heavy_rain',
-                        'flood',
-                        'landslide',
-                        'thunderstorm'
-                    ],
-
-            createdAt:
-                new Date().toISOString(),
-
-            status:
-                'ACTIVE'
-
+            longitude:
+                Number.isFinite(Number(longitude))
+                    ? Number(longitude)
+                    : null
         };
 
-        pushRecord(
-            FILES.users,
-            user,
-            10000
+        const preferences =
+            Array.isArray(alertPreferences)
+                ? alertPreferences
+                : [
+                    'heavy_rain',
+                    'flood',
+                    'landslide',
+                    'thunderstorm'
+                ];
+
+        await pool.query(
+            `
+            INSERT INTO public.users (
+                id,
+                name,
+                mobile,
+                email,
+                password_hash,
+                permanent_location,
+                alert_preferences,
+                status,
+                created_at
+            )
+            VALUES (
+                $1,
+                $2,
+                $3,
+                $4,
+                $5,
+                $6::jsonb,
+                $7::jsonb,
+                $8,
+                $9
+            )
+            `,
+            [
+                userId,
+                String(name).trim(),
+                normalizedMobile,
+                normalizedEmail,
+                passwordHash,
+                JSON.stringify(location),
+                JSON.stringify(preferences),
+                'ACTIVE',
+                new Date().toISOString()
+            ]
         );
 
         return res.status(201).json({
@@ -258,14 +656,12 @@ app.post('/api/auth/register', async (req, res) => {
             ok: true,
 
             user: {
-                id: user.id,
-                name: user.name,
-                mobile: user.mobile,
-                email: user.email,
-                permanentLocation:
-                    user.permanentLocation,
-                alertPreferences:
-                    user.alertPreferences
+                id: userId,
+                name: String(name).trim(),
+                mobile: normalizedMobile,
+                email: normalizedEmail,
+                permanentLocation: location,
+                alertPreferences: preferences
             }
 
         });
@@ -302,28 +698,39 @@ app.post('/api/auth/login', async (req, res) => {
         if (!identifier || !password) {
 
             return res.status(400).json({
-                error: 'Mobile/email and password are required.'
+                error:
+                    'Mobile/email and password are required.'
             });
 
         }
-
-        const users = readJson(FILES.users);
 
         const value =
             String(identifier)
                 .trim()
                 .toLowerCase();
 
-        const user =
-            users.find(u =>
-                u.mobile === value ||
-                (
-                    u.email &&
-                    u.email.toLowerCase() === value
-                )
-            );
+        const result = await pool.query(
+            `
+            SELECT
+                id,
+                name,
+                mobile,
+                email,
+                password_hash,
+                permanent_location,
+                alert_preferences
+            FROM public.users
+            WHERE mobile = $1
+               OR (
+                    email IS NOT NULL
+                    AND LOWER(email) = LOWER($1)
+               )
+            LIMIT 1
+            `,
+            [value]
+        );
 
-        if (!user) {
+        if (result.rows.length === 0) {
 
             return res.status(401).json({
                 error: 'Invalid login credentials.'
@@ -331,10 +738,13 @@ app.post('/api/auth/login', async (req, res) => {
 
         }
 
+        const user =
+            result.rows[0];
+
         const valid =
             await bcrypt.compare(
                 password,
-                user.passwordHash
+                user.password_hash
             );
 
         if (!valid) {
@@ -350,14 +760,21 @@ app.post('/api/auth/login', async (req, res) => {
             ok: true,
 
             user: {
+
                 id: user.id,
+
                 name: user.name,
+
                 mobile: user.mobile,
+
                 email: user.email,
+
                 permanentLocation:
-                    user.permanentLocation,
+                    user.permanent_location,
+
                 alertPreferences:
-                    user.alertPreferences
+                    user.alert_preferences
+
             }
 
         });
@@ -380,28 +797,10 @@ app.post('/api/auth/login', async (req, res) => {
 
 
 
-
 // Update user profile
 app.put('/api/auth/profile/:id', async (req, res) => {
 
     try {
-
-        const users = readJson(FILES.users);
-
-        const user =
-            users.find(
-                u =>
-                    String(u.id) ===
-                    String(req.params.id)
-            );
-
-        if (!user) {
-
-            return res.status(404).json({
-                error: 'User not found.'
-            });
-
-        }
 
         const {
             name,
@@ -412,63 +811,130 @@ app.put('/api/auth/profile/:id', async (req, res) => {
             alertPreferences
         } = req.body || {};
 
-        if (name !== undefined) {
-            user.name = String(name).trim();
+        const userResult = await pool.query(
+            `
+            SELECT
+                id,
+                name,
+                mobile,
+                email,
+                permanent_location,
+                alert_preferences
+            FROM public.users
+            WHERE id = $1
+            LIMIT 1
+            `,
+            [req.params.id]
+        );
+
+        if (userResult.rows.length === 0) {
+
+            return res.status(404).json({
+                error: 'User not found.'
+            });
+
         }
 
-        if (email !== undefined) {
-            user.email =
-                String(email).trim().toLowerCase();
-        }
+        const currentUser =
+            userResult.rows[0];
+
+        const newName =
+            name !== undefined
+                ? String(name).trim()
+                : currentUser.name;
+
+        const newEmail =
+            email !== undefined
+                ? (
+                    String(email).trim()
+                        ? String(email).trim().toLowerCase()
+                        : null
+                )
+                : currentUser.email;
+
+        let newLocation =
+            currentUser.permanent_location;
 
         if (permanentLocation !== undefined) {
 
-            user.permanentLocation = {
+            newLocation = {
 
                 name:
                     permanentLocation?.name ||
-                    user.permanentLocation?.name ||
+                    currentUser.permanent_location?.name ||
                     '',
 
                 latitude:
                     Number.isFinite(Number(latitude))
                         ? Number(latitude)
-                        : user.permanentLocation?.latitude ?? null,
+                        : currentUser.permanent_location?.latitude ?? null,
 
                 longitude:
                     Number.isFinite(Number(longitude))
                         ? Number(longitude)
-                        : user.permanentLocation?.longitude ?? null
+                        : currentUser.permanent_location?.longitude ?? null
 
             };
 
         }
 
-        if (Array.isArray(alertPreferences)) {
-            user.alertPreferences = alertPreferences;
-        }
+        const newPreferences =
+            Array.isArray(alertPreferences)
+                ? alertPreferences
+                : currentUser.alert_preferences;
 
-        user.updatedAt =
-            new Date().toISOString();
+        const updated =
+            await pool.query(
+                `
+                UPDATE public.users
+                SET
+                    name = $1,
+                    email = $2,
+                    permanent_location = $3::jsonb,
+                    alert_preferences = $4::jsonb,
+                    updated_at = $5
+                WHERE id = $6
+                RETURNING
+                    id,
+                    name,
+                    mobile,
+                    email,
+                    permanent_location,
+                    alert_preferences
+                `,
+                [
+                    newName,
+                    newEmail,
+                    JSON.stringify(newLocation),
+                    JSON.stringify(newPreferences),
+                    new Date().toISOString(),
+                    req.params.id
+                ]
+            );
 
-        writeJson(
-            FILES.users,
-            users
-        );
+        const user =
+            updated.rows[0];
 
         return res.json({
 
             ok: true,
 
             user: {
+
                 id: user.id,
+
                 name: user.name,
+
                 mobile: user.mobile,
+
                 email: user.email,
+
                 permanentLocation:
-                    user.permanentLocation,
+                    user.permanent_location,
+
                 alertPreferences:
-                    user.alertPreferences
+                    user.alert_preferences
+
             }
 
         });
@@ -494,261 +960,345 @@ app.put('/api/auth/profile/:id', async (req, res) => {
 
 
 
+
+
 // =====================================================
-// AUTHENTICATION
+// ADMIN AUTHENTICATION
 // =====================================================
 
-// REGISTER
-app.post('/api/auth/register', async (req, res) => {
 
-    try {
 
-        const {
-            name,
-            mobile,
-            email,
-            password,
-            permanentLocation,
-            latitude,
-            longitude,
-            alertPreferences
-        } = req.body || {};
 
-        if (!name || !mobile || !password) {
-            return res.status(400).json({
-                error: 'Name, mobile number and password are required.'
-            });
-        }
 
-        if (password.length < 6) {
-            return res.status(400).json({
-                error: 'Password must contain at least 6 characters.'
-            });
-        }
 
-        const users = readJson(FILES.users);
 
-        const normalizedMobile =
-            String(mobile).replace(/\s+/g, '');
+// =====================================================
+// ADMIN LOGIN
+// =====================================================
 
-        const normalizedEmail =
-            email
-                ? String(email).trim().toLowerCase()
-                : '';
+app.post(
+    '/api/admin/login',
+    async (req, res) => {
 
-        const existingUser = users.find(user =>
-            user.mobile === normalizedMobile ||
-            (
-                normalizedEmail &&
-                user.email === normalizedEmail
-            )
-        );
+        try {
 
-        if (existingUser) {
-            return res.status(409).json({
-                error:
-                    'An account with this mobile number or email already exists.'
-            });
-        }
+            const {
+                identifier,
+                password
+            } = req.body || {};
 
-        const passwordHash =
-            await bcrypt.hash(password, 12);
 
-        const user = {
+            // -------------------------------------------------
+            // Validate input
+            // -------------------------------------------------
 
-            id:
-                `USER-${Date.now()}-${crypto.randomBytes(3).toString('hex')}`,
+            if (
+                !identifier ||
+                !password
+            ) {
 
-            name:
-                String(name).trim(),
-
-            mobile:
-                normalizedMobile,
-
-            email:
-                normalizedEmail,
-
-            passwordHash:
-
-                passwordHash,
-
-            permanentLocation: {
-
-                name:
-                    permanentLocation?.name || '',
-
-                latitude:
-                    Number.isFinite(Number(latitude))
-                        ? Number(latitude)
-                        : null,
-
-                longitude:
-                    Number.isFinite(Number(longitude))
-                        ? Number(longitude)
-                        : null
-            },
-
-            alertPreferences:
-                Array.isArray(alertPreferences)
-                    ? alertPreferences
-                    : [
-                        'heavy_rain',
-                        'flood',
-                        'landslide',
-                        'thunderstorm'
-                    ],
-
-            createdAt:
-                new Date().toISOString(),
-
-            status:
-                'ACTIVE'
-        };
-
-        pushRecord(
-            FILES.users,
-            user,
-            10000
-        );
-
-        return res.status(201).json({
-
-            ok: true,
-
-            user: {
-
-                id: user.id,
-
-                name: user.name,
-
-                mobile: user.mobile,
-
-                email: user.email,
-
-                permanentLocation:
-                    user.permanentLocation,
-
-                alertPreferences:
-                    user.alertPreferences
+                return res.status(400).json({
+                    error:
+                        'Mobile/email and password are required.'
+                });
 
             }
 
-        });
 
-    } catch (error) {
-
-        console.error(
-            'Registration error:',
-            error
-        );
-
-        return res.status(500).json({
-            error: 'Unable to create account.'
-        });
-
-    }
-
-});
+            const value =
+                String(identifier)
+                    .trim()
+                    .toLowerCase();
 
 
-// LOGIN
-app.post('/api/auth/login', async (req, res) => {
+            // -------------------------------------------------
+            // Find the account
+            // -------------------------------------------------
 
-    try {
+            const result =
+                await pool.query(
+                    `
+                    SELECT
+                        id,
+                        name,
+                        mobile,
+                        email,
+                        password_hash,
+                        role,
+                        status
+                    FROM public.users
+                    WHERE
+                        mobile = $1
+                        OR (
+                            email IS NOT NULL
+                            AND LOWER(email) = LOWER($1)
+                        )
+                    LIMIT 1
+                    `,
+                    [value]
+                );
 
-        const {
-            identifier,
-            password
-        } = req.body || {};
 
-        if (!identifier || !password) {
+            if (result.rows.length === 0) {
 
-            return res.status(400).json({
-                error:
-                    'Mobile/email and password are required.'
-            });
+                return res.status(401).json({
+                    error:
+                        'Invalid admin credentials.'
+                });
 
-        }
+            }
 
-        const users =
-            readJson(FILES.users);
 
-        const value =
-            String(identifier)
-                .trim()
-                .toLowerCase();
+            const user =
+                result.rows[0];
 
-        const user =
-            users.find(u =>
-                u.mobile === value ||
-                (
-                    u.email &&
-                    u.email.toLowerCase() === value
+
+            // -------------------------------------------------
+            // Verify password
+            // -------------------------------------------------
+
+            const passwordValid =
+                await bcrypt.compare(
+                    password,
+                    user.password_hash
+                );
+
+
+            if (!passwordValid) {
+
+                return res.status(401).json({
+                    error:
+                        'Invalid admin credentials.'
+                });
+
+            }
+
+
+            // -------------------------------------------------
+            // Verify account status
+            // -------------------------------------------------
+
+            const status =
+                String(
+                    user.status || ''
                 )
-            );
+                    .trim()
+                    .toUpperCase();
 
-        if (!user) {
 
-            return res.status(401).json({
-                error:
-                    'Invalid login credentials.'
-            });
+            if (
+                status !== 'ACTIVE'
+            ) {
 
-        }
-
-        const valid =
-            await bcrypt.compare(
-                password,
-                user.passwordHash
-            );
-
-        if (!valid) {
-
-            return res.status(401).json({
-                error:
-                    'Invalid login credentials.'
-            });
-
-        }
-
-        return res.json({
-
-            ok: true,
-
-            user: {
-
-                id: user.id,
-
-                name: user.name,
-
-                mobile: user.mobile,
-
-                email: user.email,
-
-                permanentLocation:
-                    user.permanentLocation,
-
-                alertPreferences:
-                    user.alertPreferences
+                return res.status(403).json({
+                    error:
+                        'This account is not active.'
+                });
 
             }
 
-        });
+
+            // -------------------------------------------------
+            // Verify ADMIN role
+            // -------------------------------------------------
+
+            const role =
+                String(
+                    user.role || ''
+                )
+                    .trim()
+                    .toUpperCase();
+
+
+            if (
+                role !== 'ADMIN'
+            ) {
+
+                return res.status(403).json({
+                    error:
+                        'Administrator access is required.'
+                });
+
+            }
+
+
+            // -------------------------------------------------
+            // Create JWT
+            // -------------------------------------------------
+
+            const token =
+                jwt.sign(
+                    {
+                        userId:
+                            user.id,
+
+                        role:
+                            'ADMIN'
+                    },
+
+                    process.env.JWT_SECRET,
+
+                    {
+                        expiresIn:
+                            '8h',
+
+                        issuer:
+                            'RakshaNet',
+
+                        audience:
+                            'RakshaNet-Admin'
+                    }
+                );
+
+
+            // -------------------------------------------------
+            // SUCCESS
+            // -------------------------------------------------
+
+            return res.json({
+
+                ok: true,
+
+                token,
+
+                user: {
+
+                    id:
+                        user.id,
+
+                    name:
+                        user.name,
+
+                    mobile:
+                        user.mobile,
+
+                    email:
+                        user.email,
+
+                    role:
+                        'ADMIN'
+
+                }
+
+            });
+
+        } catch (error) {
+
+            console.error(
+                'Admin login error:',
+                error
+            );
+
+            return res.status(500).json({
+
+                error:
+                    'Unable to process admin login.',
+
+                details:
+                    error.message
+
+            });
+
+        }
+
+    }
+);
+
+
+
+
+
+
+
+
+// =====================================================
+// ADMIN AUTHENTICATION MIDDLEWARE
+// =====================================================
+
+function requireAdmin(req, res, next) {
+
+    try {
+
+        const authHeader =
+            req.headers.authorization || '';
+
+
+        if (
+            !authHeader.startsWith(
+                'Bearer '
+            )
+        ) {
+
+            return res.status(401).json({
+                error:
+                    'Admin authentication required.'
+            });
+
+        }
+
+
+        const token =
+            authHeader
+                .slice(7)
+                .trim();
+
+
+        if (!token) {
+
+            return res.status(401).json({
+                error:
+                    'Admin authentication required.'
+            });
+
+        }
+
+
+        const decoded =
+            jwt.verify(
+                token,
+                process.env.JWT_SECRET,
+                {
+                    issuer: 'RakshaNet',
+                    audience: 'RakshaNet-Admin'
+                }
+            );
+
+
+        if (
+            !decoded ||
+            decoded.role !== 'ADMIN'
+        ) {
+
+            return res.status(403).json({
+                error:
+                    'Administrator access required.'
+            });
+
+        }
+
+
+        req.admin =
+            decoded;
+
+
+        next();
 
     } catch (error) {
 
         console.error(
-            'Login error:',
-            error
+            'Admin authentication error:',
+            error.message
         );
 
-        return res.status(500).json({
-            error: 'Unable to login.'
+        return res.status(401).json({
+            error:
+                'Invalid or expired admin token.'
         });
 
     }
 
-});
+}
+
 
 
 
@@ -766,11 +1316,47 @@ app.post('/api/auth/login', async (req, res) => {
 
 app.get(
     '/api/reports',
-    (_req, res) => {
+    async (_req, res) => {
 
-        res.json(
-            readJson(FILES.reports)
-        );
+        try {
+
+            const result = await pool.query(
+                `
+                SELECT
+                    id,
+                    reporter_name AS "reporterName",
+                    contact,
+                    incident_type AS "incidentType",
+                    latitude,
+                    longitude,
+                    people_affected AS "peopleAffected",
+                    injured,
+                    trapped,
+                    description,
+                    priority,
+                    timestamp,
+                    status,
+                    synced,
+                    evidence
+                FROM public.emergency_reports
+                ORDER BY timestamp DESC
+                `
+            );
+
+            return res.json(result.rows);
+
+        } catch (error) {
+
+            console.error(
+                'Get reports error:',
+                error
+            );
+
+            return res.status(500).json({
+                error: 'Unable to load emergency reports.'
+            });
+
+        }
 
     }
 );
@@ -778,38 +1364,64 @@ app.get(
 
 app.delete(
     '/api/reports/:id',
-    (req, res) => {
+    requireAdmin,
+    async (req, res) => {
 
-        const reports =
-            readJson(FILES.reports);
+        try {
 
-        const index =
-            reports.findIndex(
-                r =>
-                    String(r.id) ===
-                    String(req.params.id)
+            const result =
+                await pool.query(
+                    `
+                    DELETE FROM public.emergency_reports
+                    WHERE id = $1
+                    RETURNING
+                        id,
+                        reporter_name AS "reporterName",
+                        contact,
+                        incident_type AS "incidentType",
+                        latitude,
+                        longitude,
+                        people_affected AS "peopleAffected",
+                        injured,
+                        trapped,
+                        description,
+                        priority,
+                        timestamp,
+                        status,
+                        synced,
+                        evidence
+                    `,
+                    [req.params.id]
+                );
+
+            if (result.rows.length === 0) {
+
+                return res.status(404).json({
+                    error: 'Report not found.'
+                });
+
+            }
+
+            return res.json({
+                ok: true,
+                deleted: result.rows[0]
+            });
+
+        } catch (error) {
+
+            console.error(
+                'Delete report error:',
+                error
             );
 
-        if (index === -1) {
-
-            return res.status(404).json({
-                error: 'Report not found.'
+            return res.status(500).json({
+                error:
+                    'Unable to delete report.',
+                details:
+                    error.message
             });
 
         }
-
-        const [deleted] =
-            reports.splice(index, 1);
-
-        writeJson(
-            FILES.reports,
-            reports
-        );
-
-        res.json({
-            ok: true,
-            deleted
-        });
 
     }
 );
@@ -817,32 +1429,47 @@ app.delete(
 
 app.delete(
     '/api/reports',
-    (_req, res) => {
+    requireAdmin,
+    async (_req, res) => {
 
-        const reports =
-            readJson(FILES.reports);
+        try {
 
-        const kept =
-            reports.filter(
-                r =>
-                    String(r.status || '')
-                        .toUpperCase() !==
-                    'RESOLVED'
+            const result =
+                await pool.query(
+                    `
+                    DELETE FROM public.emergency_reports
+                    WHERE UPPER(COALESCE(status, '')) = 'RESOLVED'
+                    RETURNING id
+                    `
+                );
+
+            return res.json({
+
+                ok: true,
+
+                removed:
+                    result.rowCount
+
+            });
+
+        } catch (error) {
+
+            console.error(
+                'Delete resolved reports error:',
+                error
             );
 
-        const removed =
-            reports.length -
-            kept.length;
+            return res.status(500).json({
 
-        writeJson(
-            FILES.reports,
-            kept
-        );
+                error:
+                    'Unable to delete resolved reports.',
 
-        res.json({
-            ok: true,
-            removed
-        });
+                details:
+                    error.message
+
+            });
+
+        }
 
     }
 );
@@ -850,40 +1477,71 @@ app.delete(
 
 app.patch(
     '/api/reports/:id/resolve',
-    (req, res) => {
+    requireAdmin,
+    async (req, res) => {
 
-        const reports =
-            readJson(FILES.reports);
+        try {
 
-        const report =
-            reports.find(
-                r =>
-                    String(r.id) ===
-                    String(req.params.id)
+            const result =
+                await pool.query(
+                    `
+                    UPDATE public.emergency_reports
+                    SET
+                        status = 'RESOLVED',
+                        resolved_at = NOW()
+                    WHERE id = $1
+                    RETURNING
+                        id,
+                        reporter_name AS "reporterName",
+                        contact,
+                        incident_type AS "incidentType",
+                        latitude,
+                        longitude,
+                        people_affected AS "peopleAffected",
+                        injured,
+                        trapped,
+                        description,
+                        priority,
+                        timestamp,
+                        status,
+                        synced,
+                        evidence,
+                        resolved_at AS "resolvedAt"
+                    `,
+                    [req.params.id]
+                );
+
+            if (result.rows.length === 0) {
+
+                return res.status(404).json({
+                    error: 'Report not found.'
+                });
+
+            }
+
+            return res.json({
+                ok: true,
+                report: result.rows[0]
+            });
+
+        } catch (error) {
+
+            console.error(
+                'Resolve report error:',
+                error
             );
 
-        if (!report) {
+            return res.status(500).json({
 
-            return res.status(404).json({
-                error: 'Report not found.'
+                error:
+                    'Unable to resolve report.',
+
+                details:
+                    error.message
+
             });
 
         }
-
-        report.status = 'RESOLVED';
-
-        report.resolvedAt =
-            new Date().toISOString();
-
-        writeJson(
-            FILES.reports,
-            reports
-        );
-
-        res.json({
-            ok: true,
-            report
-        });
 
     }
 );
@@ -892,126 +1550,328 @@ app.patch(
 app.post(
     '/api/reports',
     upload.single('evidence'),
-    (req, res) => {
-
-        const body =
-            req.body || {};
-
-        let priority = null;
+    async (req, res) => {
 
         try {
 
-            priority =
-                body.priority
-                    ? JSON.parse(body.priority)
-                    : null;
+            const body =
+                req.body || {};
 
-        } catch (error) {
+            let priority = null;
 
-            priority = null;
+            try {
 
-        }
+                priority =
+                    body.priority
+                        ? JSON.parse(body.priority)
+                        : null;
 
-        const report = {
+            } catch (_error) {
 
-            id:
-                body.id ||
-                `RN-${Date.now()}`,
+                priority = null;
 
-            reporterName:
-                body.reporterName ||
-                'Anonymous',
+            }
 
-            contact:
-                body.contact ||
-                '',
+            const report = {
 
-            incidentType:
-                body.incidentType ||
-                'Other',
+                id:
+                    body.id ||
+                    `RN-${Date.now()}-${crypto.randomBytes(3).toString('hex')}`,
 
-            latitude:
-                Number(body.latitude),
+                reporterName:
+                    body.reporterName ||
+                    'Anonymous',
 
-            longitude:
-                Number(body.longitude),
+                contact:
+                    body.contact ||
+                    '',
 
-            peopleAffected:
-                Number(
-                    body.peopleAffected || 0
-                ),
+                incidentType:
+                    body.incidentType ||
+                    'Other',
 
-            injured:
-                Number(
-                    body.injured || 0
-                ),
+                latitude:
+                    Number(body.latitude),
 
-            trapped:
-                Number(
-                    body.trapped || 0
-                ),
+                longitude:
+                    Number(body.longitude),
 
-            description:
-                body.description ||
-                '',
+                peopleAffected:
+                    Number(
+                        body.peopleAffected || 0
+                    ),
 
-            priority,
+                injured:
+                    Number(
+                        body.injured || 0
+                    ),
 
-            timestamp:
-                body.timestamp ||
-                new Date().toISOString(),
+                trapped:
+                    Number(
+                        body.trapped || 0
+                    ),
 
-            status:
-                'NEW',
+                description:
+                    body.description ||
+                    '',
 
-            synced:
-                true,
+                priority,
 
-            evidence:
-                req.file
-                    ? {
-                        name:
-                            req.file.originalname,
+                timestamp:
+                    body.timestamp ||
+                    new Date().toISOString(),
 
-                        url:
-                            `/uploads/${req.file.filename}`,
+                status:
+                    'NEW',
 
-                        size:
-                            req.file.size,
+                synced:
+                    true,
 
-                        type:
-                            req.file.mimetype
+
+            };
+
+
+
+
+
+
+
+
+
+
+
+// =====================================================
+// SUPABASE STORAGE - EVIDENCE UPLOAD
+// =====================================================
+
+if (req.file) {
+
+    try {
+
+        // Make a clean Storage object path.
+        const safeFileName =
+            String(req.file.filename)
+                .replace(/[^a-zA-Z0-9._-]/g, "_");
+
+        const storagePath =
+            `reports/${report.id}/${safeFileName}`;
+
+        const fileBuffer =
+            fs.readFileSync(
+                req.file.path
+            );
+
+        console.log(
+            "Uploading evidence to Supabase Storage:",
+            {
+                bucket: "rakshanet-evidence",
+                path: storagePath,
+                size: fileBuffer.length,
+                type: req.file.mimetype
+            }
+        );
+
+        const uploadResult =
+            await supabaseAdmin.storage
+                .from("rakshanet-evidence")
+                .upload(
+                    storagePath,
+                    fileBuffer,
+                    {
+                        contentType:
+                            req.file.mimetype,
+
+                        cacheControl:
+                            "3600",
+
+                        upsert:
+                            true
                     }
-                    : null
+                );
 
-        };
+        if (uploadResult.error) {
 
+            console.error(
+                "Supabase Storage upload error:",
+                uploadResult.error
+            );
 
-        if (
-            !Number.isFinite(
-                report.latitude
-            ) ||
-            !Number.isFinite(
-                report.longitude
-            )
-        ) {
-
-            return res.status(400).json({
+            return res.status(500).json({
                 error:
-                    'Valid latitude and longitude are required.'
+                    "Evidence file could not be uploaded to cloud storage.",
+
+                details:
+                    uploadResult.error.message
             });
 
         }
 
+        const publicUrlResult =
+            supabaseAdmin.storage
+                .from("rakshanet-evidence")
+                .getPublicUrl(
+                    storagePath
+                );
 
-        pushRecord(
-            FILES.reports,
-            report
+        report.evidence = {
+
+            name:
+                req.file.originalname,
+
+            url:
+                publicUrlResult.data.publicUrl,
+
+            path:
+                storagePath,
+
+            size:
+                req.file.size,
+
+            type:
+                req.file.mimetype
+
+        };
+
+        // Remove the temporary local file.
+        try {
+
+            fs.unlinkSync(
+                req.file.path
+            );
+
+        } catch (cleanupError) {
+
+            console.warn(
+                "Temporary evidence cleanup failed:",
+                cleanupError.message
+            );
+
+        }
+
+    } catch (storageError) {
+
+        console.error(
+            "Evidence storage error:",
+            storageError
         );
 
-        res.status(201).json(
-            report
-        );
+        return res.status(500).json({
+
+            error:
+                "Unable to store evidence file.",
+
+            details:
+                storageError.message
+
+        });
+
+    }
+
+} else {
+
+    report.evidence = null;
+
+}
+
+
+
+
+
+
+
+
+
+            if (
+                !Number.isFinite(
+                    report.latitude
+                ) ||
+                !Number.isFinite(
+                    report.longitude
+                )
+            ) {
+
+                return res.status(400).json({
+                    error:
+                        'Valid latitude and longitude are required.'
+                });
+
+            }
+
+
+            await pool.query(
+                `
+                INSERT INTO public.emergency_reports (
+                    id,
+                    reporter_name,
+                    contact,
+                    incident_type,
+                    latitude,
+                    longitude,
+                    people_affected,
+                    injured,
+                    trapped,
+                    description,
+                    priority,
+                    timestamp,
+                    status,
+                    synced,
+                    evidence
+                )
+                VALUES (
+                    $1,
+                    $2,
+                    $3,
+                    $4,
+                    $5,
+                    $6,
+                    $7,
+                    $8,
+                    $9,
+                    $10,
+                    $11::jsonb,
+                    $12,
+                    $13,
+                    $14,
+                    $15::jsonb
+                )
+                `,
+                [
+                    report.id,
+                    report.reporterName,
+                    report.contact,
+                    report.incidentType,
+                    report.latitude,
+                    report.longitude,
+                    report.peopleAffected,
+                    report.injured,
+                    report.trapped,
+                    report.description,
+                    JSON.stringify(report.priority),
+                    report.timestamp,
+                    report.status,
+                    report.synced,
+                    JSON.stringify(report.evidence)
+                ]
+            );
+
+
+            return res.status(201).json(
+                report
+            );
+
+        } catch (error) {
+
+            console.error(
+                'Create report error:',
+                error
+            );
+
+            return res.status(500).json({
+                error:
+                    'Unable to save emergency report.'
+            });
+
+        }
 
     }
 );
@@ -1023,11 +1883,44 @@ app.post(
 
 app.get(
     '/api/sos',
-    (_req, res) => {
+    async (_req, res) => {
 
-        res.json(
-            readJson(FILES.sos)
-        );
+        try {
+
+            const result =
+                await pool.query(
+                    `
+                    SELECT
+                        id,
+                        latitude,
+                        longitude,
+                        description,
+                        timestamp,
+                        priority,
+                        status,
+                        synced
+                    FROM public.sos_alerts
+                    ORDER BY timestamp DESC
+                    `
+                );
+
+            return res.json(
+                result.rows
+            );
+
+        } catch (error) {
+
+            console.error(
+                'Get SOS alerts error:',
+                error
+            );
+
+            return res.status(500).json({
+                error:
+                    'Unable to load SOS alerts.'
+            });
+
+        }
 
     }
 );
@@ -1035,70 +1928,130 @@ app.get(
 
 app.post(
     '/api/sos',
-    (req, res) => {
+    async (req, res) => {
 
-        const body =
-            req.body || {};
+        try {
 
-        const sos = {
+            const body =
+                req.body || {};
 
-            id:
-                body.id ||
-                `SOS-${Date.now()}`,
+            const sos = {
 
-            latitude:
-                Number(body.latitude),
+                id:
+                    body.id ||
+                    `SOS-${Date.now()}-${crypto.randomBytes(3).toString('hex')}`,
 
-            longitude:
-                Number(body.longitude),
+                latitude:
+                    Number(body.latitude),
 
-            description:
-                body.description ||
-                'Immediate rescue requested.',
+                longitude:
+                    Number(body.longitude),
 
-            timestamp:
-                body.timestamp ||
-                new Date().toISOString(),
+                description:
+                    body.description ||
+                    'Immediate rescue requested.',
 
-            priority:
-                'P1 Critical',
+                timestamp:
+                    body.timestamp ||
+                    new Date().toISOString(),
 
-            status:
-                'NEW',
+                priority:
+                    'P1 Critical',
 
-            synced:
-                true
+                status:
+                    'NEW',
 
-        };
+                synced:
+                    true
+
+            };
 
 
-        if (
-            !Number.isFinite(
-                sos.latitude
-            ) ||
-            !Number.isFinite(
-                sos.longitude
-            )
-        ) {
+            // -------------------------------------------------
+            // Validate location
+            // -------------------------------------------------
 
-            return res.status(400).json({
+            if (
+                !Number.isFinite(
+                    sos.latitude
+                ) ||
+                !Number.isFinite(
+                    sos.longitude
+                )
+            ) {
+
+                return res.status(400).json({
+
+                    error:
+                        'Valid location is required.'
+
+                });
+
+            }
+
+
+            // -------------------------------------------------
+            // Save SOS to Supabase
+            // -------------------------------------------------
+
+            await pool.query(
+                `
+                INSERT INTO public.sos_alerts (
+                    id,
+                    latitude,
+                    longitude,
+                    description,
+                    timestamp,
+                    priority,
+                    status,
+                    synced
+                )
+                VALUES (
+                    $1,
+                    $2,
+                    $3,
+                    $4,
+                    $5,
+                    $6,
+                    $7,
+                    $8
+                )
+                `,
+                [
+                    sos.id,
+                    sos.latitude,
+                    sos.longitude,
+                    sos.description,
+                    sos.timestamp,
+                    sos.priority,
+                    sos.status,
+                    sos.synced
+                ]
+            );
+
+
+            return res.status(201).json(
+                sos
+            );
+
+        } catch (error) {
+
+            console.error(
+                'Create SOS error:',
+                error
+            );
+
+            return res.status(500).json({
+
                 error:
-                    'Valid location is required.'
+                    'Unable to save SOS alert.',
+
+                details:
+                    error.message
+
             });
 
         }
-
-
-        pushRecord(
-            FILES.sos,
-            sos,
-            1000
-        );
-
-
-        res.status(201).json(
-            sos
-        );
 
     }
 );
@@ -1110,11 +2063,43 @@ app.post(
 
 app.get(
     '/api/volunteers',
-    (_req, res) => {
+    async (_req, res) => {
 
-        res.json(
-            readJson(FILES.volunteers)
-        );
+        try {
+
+            const result = await pool.query(
+                `
+                SELECT
+                    id,
+                    name,
+                    phone,
+                    skill,
+                    availability,
+                    latitude,
+                    longitude,
+                    timestamp,
+                    status,
+                    synced
+                FROM public.volunteers
+                ORDER BY timestamp DESC
+                `
+            );
+
+            return res.json(result.rows);
+
+        } catch (error) {
+
+            console.error(
+                'Get volunteers error:',
+                error
+            );
+
+            return res.status(500).json({
+                error:
+                    'Unable to load volunteers.'
+            });
+
+        }
 
     }
 );
@@ -1122,78 +2107,158 @@ app.get(
 
 app.post(
     '/api/volunteers',
-    (req, res) => {
+    async (req, res) => {
 
-        const body =
-            req.body || {};
+        try {
+
+            const body =
+                req.body || {};
+
+            if (
+                !body.name ||
+                !body.phone
+            ) {
+
+                return res.status(400).json({
+                    error:
+                        'Volunteer name and phone are required.'
+                });
+
+            }
+
+            const volunteer = {
+
+                id:
+                    body.id ||
+                    `VOL-${Date.now()}-${crypto.randomBytes(3).toString('hex')}`,
+
+                name:
+                    String(body.name).trim(),
+
+                phone:
+                    String(body.phone).trim(),
+
+                skill:
+                    body.skill ||
+                    'General',
+
+                availability:
+                    body.availability ||
+                    'Available now',
+
+                latitude:
+                    body.latitude !== undefined &&
+                    body.latitude !== ''
+                        ? Number(body.latitude)
+                        : null,
+
+                longitude:
+                    body.longitude !== undefined &&
+                    body.longitude !== ''
+                        ? Number(body.longitude)
+                        : null,
+
+                timestamp:
+                    body.timestamp ||
+                    new Date().toISOString(),
+
+                status:
+                    'REGISTERED',
+
+                synced:
+                    true
+
+            };
 
 
-        if (
-            !body.name ||
-            !body.phone
-        ) {
+            if (
+                volunteer.latitude !== null &&
+                !Number.isFinite(
+                    volunteer.latitude
+                )
+            ) {
 
-            return res.status(400).json({
+                volunteer.latitude = null;
+
+            }
+
+
+            if (
+                volunteer.longitude !== null &&
+                !Number.isFinite(
+                    volunteer.longitude
+                )
+            ) {
+
+                volunteer.longitude = null;
+
+            }
+
+
+            await pool.query(
+                `
+                INSERT INTO public.volunteers (
+                    id,
+                    name,
+                    phone,
+                    skill,
+                    availability,
+                    latitude,
+                    longitude,
+                    timestamp,
+                    status,
+                    synced
+                )
+                VALUES (
+                    $1,
+                    $2,
+                    $3,
+                    $4,
+                    $5,
+                    $6,
+                    $7,
+                    $8,
+                    $9,
+                    $10
+                )
+                `,
+                [
+                    volunteer.id,
+                    volunteer.name,
+                    volunteer.phone,
+                    volunteer.skill,
+                    volunteer.availability,
+                    volunteer.latitude,
+                    volunteer.longitude,
+                    volunteer.timestamp,
+                    volunteer.status,
+                    volunteer.synced
+                ]
+            );
+
+
+            return res.status(201).json(
+                volunteer
+            );
+
+        } catch (error) {
+
+            console.error(
+                'Create volunteer error:',
+                error
+            );
+
+            return res.status(500).json({
+
                 error:
-                    'Volunteer name and phone are required.'
+                    'Unable to save volunteer.',
+
+                details:
+                    error.message
+
             });
 
         }
-
-
-        const volunteer = {
-
-            id:
-                body.id ||
-                `VOL-${Date.now()}`,
-
-            name:
-                body.name,
-
-            phone:
-                body.phone,
-
-            skill:
-                body.skill ||
-                'General',
-
-            availability:
-                body.availability ||
-                'Available now',
-
-            latitude:
-                body.latitude
-                    ? Number(body.latitude)
-                    : null,
-
-            longitude:
-                body.longitude
-                    ? Number(body.longitude)
-                    : null,
-
-            timestamp:
-                body.timestamp ||
-                new Date().toISOString(),
-
-            status:
-                'REGISTERED',
-
-            synced:
-                true
-
-        };
-
-
-        pushRecord(
-            FILES.volunteers,
-            volunteer,
-            2000
-        );
-
-
-        res.status(201).json(
-            volunteer
-        );
 
     }
 );
@@ -1205,36 +2270,118 @@ app.post(
 
 app.get(
     '/api/dashboard',
-    (_req, res) => {
+    requireAdmin,
+    async (_req, res) => {
 
-        const reports =
-            readJson(FILES.reports);
+        try {
 
-        const sos =
-            readJson(FILES.sos);
+            // =================================================
+            // LOAD EMERGENCY REPORTS FROM SUPABASE
+            // =================================================
 
-        const volunteers =
-            readJson(FILES.volunteers);
+            const reportsResult =
+                await pool.query(
+                    `
+                    SELECT
+                        id,
+                        reporter_name AS "reporterName",
+                        contact,
+                        incident_type AS "incidentType",
+                        latitude,
+                        longitude,
+                        people_affected AS "peopleAffected",
+                        injured,
+                        trapped,
+                        description,
+                        priority,
+                        timestamp,
+                        status,
+                        synced,
+                        evidence
+                    FROM public.emergency_reports
+                    ORDER BY timestamp DESC
+                    `
+                );
 
 
-        res.json({
+            // =================================================
+            // LOAD SOS ALERTS FROM SUPABASE
+            // =================================================
 
-            summary: {
+            const sosResult =
+                await pool.query(
+                    `
+                    SELECT
+                        id,
+                        latitude,
+                        longitude,
+                        description,
+                        timestamp,
+                        priority,
+                        status,
+                        synced
+                    FROM public.sos_alerts
+                    ORDER BY timestamp DESC
+                    `
+                );
+
+
+            // =================================================
+            // LOAD VOLUNTEERS FROM SUPABASE
+            // =================================================
+
+            const volunteersResult =
+                await pool.query(
+                    `
+                    SELECT
+                        id,
+                        name,
+                        phone,
+                        skill,
+                        availability,
+                        latitude,
+                        longitude,
+                        timestamp,
+                        status,
+                        synced
+                    FROM public.volunteers
+                    ORDER BY timestamp DESC
+                    `
+                );
+
+
+            const reports =
+                reportsResult.rows;
+
+            const sos =
+                sosResult.rows;
+
+            const volunteers =
+                volunteersResult.rows;
+
+
+            // =================================================
+            // DASHBOARD SUMMARY
+            // =================================================
+
+            const summary = {
 
                 reports:
                     reports.length,
 
                 criticalReports:
                     reports.filter(
-                        r =>
-                            r.priority?.label ===
+                        report =>
+                            report.priority?.label ===
                             'P1 Critical'
                     ).length,
 
                 activeSOS:
                     sos.filter(
-                        s =>
-                            s.status !==
+                        alert =>
+                            String(
+                                alert.status || ''
+                            ).toUpperCase() !==
                             'RESOLVED'
                     ).length,
 
@@ -1243,18 +2390,50 @@ app.get(
 
                 availableVolunteers:
                     volunteers.filter(
-                        v =>
-                            v.availability !==
-                            'Not available'
+                        volunteer =>
+                            String(
+                                volunteer.availability || ''
+                            ).toLowerCase() !==
+                            'not available'
                     ).length
 
-            },
+            };
 
-            reports,
-            sos,
-            volunteers
 
-        });
+            // =================================================
+            // RESPONSE
+            // =================================================
+
+            return res.json({
+
+                summary,
+
+                reports,
+
+                sos,
+
+                volunteers
+
+            });
+
+        } catch (error) {
+
+            console.error(
+                'Dashboard error:',
+                error
+            );
+
+            return res.status(500).json({
+
+                error:
+                    'Unable to load dashboard data.',
+
+                details:
+                    error.message
+
+            });
+
+        }
 
     }
 );
@@ -1529,15 +2708,33 @@ app.get(
 const PORT =
     process.env.PORT || 5000;
 
-
 app.listen(
     PORT,
     '0.0.0.0',
-    () => {
+    async () => {
 
         console.log(
             `RakshaNet backend running on port ${PORT}`
         );
+
+        try {
+            const result = await pool.query(
+                'SELECT NOW() AS time'
+            );
+
+            console.log(
+                'Supabase PostgreSQL connected:',
+                result.rows[0].time
+            );
+
+        } catch (error) {
+
+            console.error(
+                'Supabase PostgreSQL connection failed:',
+                error
+            );
+
+        }
 
     }
 );

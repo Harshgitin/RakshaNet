@@ -4,6 +4,118 @@
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>RakshaNet | Live GIS & Risk Dashboard</title>
 <link rel="stylesheet" href="../css/style.css">
+
+
+
+
+<style>
+    .rn-location-search-wrap {
+        position: relative;
+        width: 100%;
+    }
+
+    .rn-location-input-row {
+        display: flex;
+        gap: 8px;
+        align-items: stretch;
+    }
+
+    .rn-location-input-row .rn-input {
+        flex: 1;
+        min-width: 0;
+    }
+
+    .rn-location-results {
+        position: absolute;
+        top: calc(100% + 7px);
+        left: 0;
+        right: 0;
+        z-index: 2500;
+
+        display: none;
+
+        max-height: 250px;
+        overflow-y: auto;
+
+        border: 1px solid rgba(255,255,255,.12);
+        border-radius: 12px;
+
+        background: rgba(10, 18, 32, .98);
+
+        box-shadow:
+            0 18px 40px rgba(0,0,0,.35);
+
+        backdrop-filter: blur(12px);
+    }
+
+    .rn-location-results::-webkit-scrollbar {
+        width: 7px;
+    }
+
+    .rn-location-results::-webkit-scrollbar-thumb {
+        border-radius: 10px;
+        background: rgba(255,255,255,.22);
+    }
+
+    .rn-location-result {
+        display: block;
+        width: 100%;
+
+        padding: 13px 14px;
+
+        border: 0;
+        border-bottom: 1px solid rgba(255,255,255,.07);
+
+        background: transparent;
+
+        text-align: left;
+
+        cursor: pointer;
+    }
+
+    .rn-location-result:last-child {
+        border-bottom: 0;
+    }
+
+    .rn-location-result:hover {
+        background: rgba(255,255,255,.07);
+    }
+
+    .rn-location-result-title {
+        display: block;
+
+        font-size: .95rem;
+        font-weight: 700;
+    }
+
+    .rn-location-result-address {
+        display: block;
+
+        margin-top: 4px;
+
+        font-size: .76rem;
+
+        line-height: 1.35;
+
+        opacity: .62;
+    }
+
+    @media (max-width: 600px) {
+        .rn-location-input-row {
+            flex-direction: column;
+        }
+
+        .rn-location-results {
+            max-height: 230px;
+        }
+    }
+</style>
+
+
+
+
+
+
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <link rel="stylesheet" href="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.css">
 </head>
@@ -67,7 +179,115 @@
 <div class="rn-status-row"><span>OSM resources</span><strong id="osmStatus">Ready</strong></div>
 <div class="rn-status-row"><span>GPS</span><strong id="gpsStatus">Not detected</strong></div>
 </div></div>
-<div class="rn-card"><h3>🌧️ Selected Area</h3><div id="mapWeatherSummary" class="rn-muted">Click My Location or a map point.</div></div>
+
+
+
+
+
+
+
+
+<!-- GOOGLE-MAPS STYLE LOCATION SEARCH -->
+<div class="rn-card">
+
+    <h3>🔎 Search Location</h3>
+
+    <label class="rn-label">
+        City, district, village or locality
+    </label>
+
+    <div class="rn-location-search-wrap">
+
+        <div class="rn-location-input-row">
+
+            <input
+                id="mapLocationSearch"
+                class="rn-input"
+                type="text"
+                placeholder="Search a place..."
+                autocomplete="off"
+            >
+
+            <button
+                id="mapLocationSearchBtn"
+                class="rn-btn primary"
+                type="button"
+            >
+                Search
+            </button>
+
+        </div>
+
+
+        <!-- SCROLLABLE SEARCH RESULTS -->
+        <div
+            id="mapLocationSuggestions"
+            class="rn-location-results"
+        ></div>
+
+    </div>
+
+
+    <div
+        id="mapSearchStatus"
+        class="rn-small"
+        style="margin-top:8px;"
+    >
+        Start typing to search for a location.
+    </div>
+
+</div>
+
+
+
+
+
+
+
+
+
+
+
+
+        <!-- AUTOCOMPLETE DROPDOWN -->
+        <div
+            id="mapLocationSuggestions"
+            style="
+                position:absolute;
+                left:0;
+                right:90px;
+                top:calc(100% + 6px);
+                z-index:2000;
+                display:none;
+            "
+        ></div>
+
+    </div>
+
+    <div
+        id="mapSearchStatus"
+        class="rn-small"
+        style="margin-top:8px;"
+    >
+        Start typing to see location recommendations.
+    </div>
+
+</div>
+
+
+<!-- SELECTED LOCATION -->
+<div class="rn-card">
+
+    <h3>📍 Selected Area</h3>
+
+    <div
+        id="mapWeatherSummary"
+        class="rn-muted"
+    >
+        Search for a location or click My Location.
+    </div>
+
+</div>
 <div class="rn-card" id="route">
 <h3>🛣️ Evacuation Route</h3><label class="rn-label">Destination</label>
 <select id="destinationSelect" class="rn-select"><option value="">Choose hospital / shelter</option></select>

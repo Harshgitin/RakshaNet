@@ -51,16 +51,799 @@
 </section></main>
 <footer><div class="footer-logo">🛡️ RakshaNet</div><p>Responder Operations Dashboard</p></footer>
 <script>
-const $=id=>document.getElementById(id);
-function esc(v){return String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]));}
-function msg(text,type='success'){ $('dashMessage').innerHTML='<div class="rn-alert-banner '+type+'">'+esc(text)+'</div>'; setTimeout(()=>{if($('dashMessage'))$('dashMessage').innerHTML=''},3500)}
-async function api(url,opts={}){const r=await fetch(url,opts);const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.error||'Request failed');return d}
-async function removeReport(id){if(!confirm('Delete report '+id+'? This cannot be undone.'))return;try{await api('/api/reports/'+encodeURIComponent(id),{method:'DELETE'});msg('Report '+id+' deleted.');load()}catch(e){msg(e.message,'danger')}}
-async function resolveReport(id){try{await api('/api/reports/'+encodeURIComponent(id)+'/resolve',{method:'PATCH'});msg('Report '+id+' marked RESOLVED.');load()}catch(e){msg(e.message,'danger')}}
-async function load(){try{const d=await api('/api/dashboard');const cards=[['Reports',d.summary.reports],['Critical',d.summary.criticalReports],['Active SOS',d.summary.activeSOS],['Available Volunteers',d.summary.availableVolunteers]];$('dashSummary').innerHTML=cards.map(x=>'<div class="rn-card"><span class="rn-muted">'+x[0]+'</span><strong style="font-size:30px;display:block;margin-top:6px">'+x[1]+'</strong></div>').join('');$('reportCount').textContent=d.reports.length+' total';$('reportTable').innerHTML=d.reports.slice(0,50).map(r=>{const status=String(r.status||'NEW').toUpperCase();return '<div class="rn-result-item"><div class="rn-result-head"><div><strong>'+esc(r.id)+' · '+esc(r.incidentType)+'</strong><div class="rn-result-meta">'+esc(r.priority?.label||'NEW')+' · '+esc(r.peopleAffected)+' people · '+esc(new Date(r.timestamp).toLocaleString())+'</div></div><span class="rn-status">'+esc(status)+'</span></div><div class="rn-result-meta" style="margin-top:8px">'+esc(r.description||'No description')+'</div><div class="rn-actions">'+(status!=='RESOLVED'?'<button class="rn-btn resolve" onclick="resolveReport(\''+encodeURIComponent(r.id)+'\')">✅ Resolve</button>':'')+'<button class="rn-btn delete" onclick="removeReport(\''+encodeURIComponent(r.id)+'\')">🗑️ Delete</button></div></div>'}).join('')||'<div class="rn-muted rn-empty">No reports yet.</div>';$('sosTable').innerHTML=d.sos.slice(0,50).map(r=>'<div class="rn-result-item"><div class="rn-result-head"><strong>'+esc(r.id)+'</strong><span class="rn-status">'+esc(r.status||'NEW')+'</span></div><span class="rn-result-meta">'+esc(r.description)+' · '+esc(new Date(r.timestamp).toLocaleString())+'</span></div>').join('')||'<div class="rn-muted rn-empty">No SOS records.</div>';$('volTable').innerHTML=d.volunteers.slice(0,50).map(v=>'<div class="rn-result-item"><strong>'+esc(v.id)+' · '+esc(v.name)+'</strong><span class="rn-result-meta">'+esc(v.skill)+' · '+esc(v.availability)+' · '+esc(v.phone)+'</span></div>').join('')||'<div class="rn-muted rn-empty">No volunteers registered.</div>';}catch(e){$('dashSummary').innerHTML='<div class="rn-alert-banner danger">Backend unavailable. Start Node server and refresh.</div>'}}
-$('clearResolved').onclick=async()=>{if(!confirm('Delete all RESOLVED reports?'))return;try{const d=await api('/api/reports',{method:'DELETE'});msg((d.removed||0)+' resolved report(s) deleted.');load()}catch(e){msg(e.message,'danger')}};
-$('clearAllReports').onclick=async()=>{if(!confirm('Delete ALL emergency reports? This cannot be undone.'))return;try{const all=await api('/api/reports');for(const r of all)await api('/api/reports/'+encodeURIComponent(r.id),{method:'DELETE'});msg(all.length+' report(s) deleted.');load()}catch(e){msg(e.message,'danger')}};
-$('refreshDash').onclick=load;
+
+// =====================================================
+// RAKSHANET ADMIN DASHBOARD
+// =====================================================
+
+const $ =
+    id => document.getElementById(id);
+
+
+function esc(v) {
+
+    return String(v ?? '').replace(
+        /[&<>"']/g,
+        c => ({
+            '&': '&amp;',
+            '<': '&lt;',
+            '>': '&gt;',
+            '"': '&quot;',
+            "'": '&#039;'
+        }[c])
+    );
+
+}
+
+
+// =====================================================
+// ADMIN SESSION
+// =====================================================
+
+const adminToken =
+    sessionStorage.getItem(
+        "rakshanet_admin_token"
+    );
+
+const adminUser =
+    JSON.parse(
+        sessionStorage.getItem(
+            "rakshanet_admin_user"
+        ) || "null"
+    );
+
+
+// No admin token = go back to admin login
+
+if (!adminToken) {
+
+    window.location.href =
+        "admin-login.html";
+
+}
+
+
+// =====================================================
+// MESSAGE
+// =====================================================
+
+function msg(
+    text,
+    type = "success"
+) {
+
+    const box =
+        $("dashMessage");
+
+    if (!box) {
+        return;
+    }
+
+    box.innerHTML =
+        `<div class="rn-alert-banner ${type}">
+            ${esc(text)}
+        </div>`;
+
+    setTimeout(
+        () => {
+
+            if ($("dashMessage")) {
+                $("dashMessage").innerHTML =
+                    "";
+            }
+
+        },
+        3500
+    );
+
+}
+
+
+// =====================================================
+// API HELPER
+// =====================================================
+
+async function api(
+    url,
+    options = {}
+) {
+
+    const headers = {
+        ...(options.headers || {}),
+        "Authorization":
+            `Bearer ${adminToken}`
+    };
+
+
+    const response =
+        await fetch(
+            url,
+            {
+                ...options,
+                headers
+            }
+        );
+
+
+    const data =
+        await response
+            .json()
+            .catch(
+                () => ({})
+            );
+
+
+    // -------------------------------------------------
+    // Token expired / invalid
+    // -------------------------------------------------
+
+    if (
+        response.status === 401 ||
+        response.status === 403
+    ) {
+
+        sessionStorage.removeItem(
+            "rakshanet_admin_token"
+        );
+
+        sessionStorage.removeItem(
+            "rakshanet_admin_user"
+        );
+
+        window.location.href =
+            "admin-login.html";
+
+        throw new Error(
+            "Admin session expired. Please login again."
+        );
+
+    }
+
+
+    if (!response.ok) {
+
+        throw new Error(
+            data.error ||
+            `Request failed (${response.status})`
+        );
+
+    }
+
+
+    return data;
+
+}
+
+
+// =====================================================
+// DELETE ONE REPORT
+// =====================================================
+
+async function removeReport(
+    id
+) {
+
+    if (
+        !confirm(
+            `Delete report ${id}?\n\nThis cannot be undone.`
+        )
+    ) {
+        return;
+    }
+
+
+    try {
+
+        await api(
+            "/api/reports/" +
+            encodeURIComponent(id),
+            {
+                method: "DELETE"
+            }
+        );
+
+
+        msg(
+            `Report ${id} deleted.`
+        );
+
+
+        await load();
+
+    } catch (error) {
+
+        console.error(
+            "Delete report error:",
+            error
+        );
+
+        msg(
+            error.message,
+            "danger"
+        );
+
+    }
+
+}
+
+
+// =====================================================
+// RESOLVE REPORT
+// =====================================================
+
+async function resolveReport(
+    id
+) {
+
+    try {
+
+        await api(
+            "/api/reports/" +
+            encodeURIComponent(id) +
+            "/resolve",
+            {
+                method: "PATCH"
+            }
+        );
+
+
+        msg(
+            `Report ${id} marked RESOLVED.`
+        );
+
+
+        await load();
+
+    } catch (error) {
+
+        console.error(
+            "Resolve report error:",
+            error
+        );
+
+        msg(
+            error.message,
+            "danger"
+        );
+
+    }
+
+}
+
+
+// =====================================================
+// LOAD DASHBOARD
+// =====================================================
+
+async function load() {
+
+    try {
+
+        const data =
+            await api(
+                "/api/dashboard"
+            );
+
+
+        // -------------------------------------------------
+        // SUMMARY CARDS
+        // -------------------------------------------------
+
+        const cards = [
+
+            [
+                "Reports",
+                data.summary.reports
+            ],
+
+            [
+                "Critical",
+                data.summary.criticalReports
+            ],
+
+            [
+                "Active SOS",
+                data.summary.activeSOS
+            ],
+
+            [
+                "Available Volunteers",
+                data.summary.availableVolunteers
+            ]
+
+        ];
+
+
+        $("dashSummary").innerHTML =
+            cards
+                .map(
+                    card => `
+                        <div class="rn-card">
+
+                            <span class="rn-muted">
+                                ${esc(card[0])}
+                            </span>
+
+                            <strong
+                                style="
+                                    font-size:30px;
+                                    display:block;
+                                    margin-top:6px
+                                "
+                            >
+                                ${esc(card[1])}
+                            </strong>
+
+                        </div>
+                    `
+                )
+                .join("");
+
+
+        // -------------------------------------------------
+        // REPORT COUNT
+        // -------------------------------------------------
+
+        $("reportCount").textContent =
+            `${data.reports.length} total`;
+
+
+        // -------------------------------------------------
+        // REPORTS
+        // -------------------------------------------------
+
+        $("reportTable").innerHTML =
+
+            data.reports
+                .slice(0, 50)
+                .map(
+                    report => {
+
+                        const status =
+                            String(
+                                report.status ||
+                                "NEW"
+                            ).toUpperCase();
+
+
+                        const evidence =
+                            report.evidence;
+
+
+                        const evidenceHtml =
+                            evidence?.url
+                                ? `
+                                    <div
+                                        class="rn-actions"
+                                        style="margin-top:8px"
+                                    >
+                                        <a
+                                            class="rn-btn"
+                                            href="${esc(evidence.url)}"
+                                            target="_blank"
+                                            rel="noopener"
+                                        >
+                                            📎 View Evidence
+                                        </a>
+                                    </div>
+                                  `
+                                : "";
+
+
+                        return `
+                            <div
+                                class="rn-result-item"
+                            >
+
+                                <div
+                                    class="rn-result-head"
+                                >
+
+                                    <div>
+
+                                        <strong>
+                                            ${esc(report.id)}
+                                            ·
+                                            ${esc(report.incidentType)}
+                                        </strong>
+
+                                        <div
+                                            class="rn-result-meta"
+                                        >
+                                            ${esc(
+                                                report.priority?.label ||
+                                                "NEW"
+                                            )}
+
+                                            ·
+
+                                            ${esc(
+                                                report.peopleAffected
+                                            )}
+                                            people
+
+                                            ·
+
+                                            ${esc(
+                                                new Date(
+                                                    report.timestamp
+                                                ).toLocaleString()
+                                            )}
+
+                                        </div>
+
+                                    </div>
+
+
+                                    <span
+                                        class="rn-status"
+                                    >
+                                        ${esc(status)}
+                                    </span>
+
+                                </div>
+
+
+                                <div
+                                    class="rn-result-meta"
+                                    style="margin-top:8px"
+                                >
+                                    ${esc(
+                                        report.description ||
+                                        "No description"
+                                    )}
+                                </div>
+
+
+                                ${evidenceHtml}
+
+
+                                <div
+                                    class="rn-actions"
+                                >
+
+                                    ${
+                                        status !==
+                                        "RESOLVED"
+
+                                            ? `
+                                                <button
+                                                    class="rn-btn resolve"
+                                                    onclick='resolveReport(${JSON.stringify(report.id)})'
+                                                >
+                                                    ✅ Resolve
+                                                </button>
+                                              `
+                                            : ""
+                                    }
+
+
+                                    <button
+                                        class="rn-btn delete"
+                                        onclick='removeReport(${JSON.stringify(report.id)})'
+                                    >
+                                        🗑️ Delete
+                                    </button>
+
+                                </div>
+
+                            </div>
+                        `;
+
+                    }
+                )
+                .join("")
+
+            ||
+
+                `
+                    <div class="rn-muted rn-empty">
+                        No reports yet.
+                    </div>
+                `;
+
+
+        // -------------------------------------------------
+        // SOS
+        // -------------------------------------------------
+
+        $("sosTable").innerHTML =
+
+            data.sos
+                .slice(0, 50)
+                .map(
+                    sos => `
+
+                        <div
+                            class="rn-result-item"
+                        >
+
+                            <div
+                                class="rn-result-head"
+                            >
+
+                                <strong>
+                                    ${esc(sos.id)}
+                                </strong>
+
+                                <span
+                                    class="rn-status"
+                                >
+                                    ${esc(
+                                        sos.status ||
+                                        "NEW"
+                                    )}
+                                </span>
+
+                            </div>
+
+                            <span
+                                class="rn-result-meta"
+                            >
+
+                                ${esc(
+                                    sos.description
+                                )}
+
+                                ·
+
+                                ${esc(
+                                    new Date(
+                                        sos.timestamp
+                                    ).toLocaleString()
+                                )}
+
+                            </span>
+
+                            <div
+                                class="rn-small"
+                                style="margin-top:6px"
+                            >
+                                📍
+                                ${Number(
+                                    sos.latitude
+                                ).toFixed(5)}
+                                ,
+                                ${Number(
+                                    sos.longitude
+                                ).toFixed(5)}
+                            </div>
+
+                        </div>
+
+                    `
+                )
+                .join("")
+
+            ||
+
+                `
+                    <div class="rn-muted rn-empty">
+                        No SOS records.
+                    </div>
+                `;
+
+
+        // -------------------------------------------------
+        // VOLUNTEERS
+        // -------------------------------------------------
+
+        $("volTable").innerHTML =
+
+            data.volunteers
+                .slice(0, 50)
+                .map(
+                    volunteer => `
+
+                        <div
+                            class="rn-result-item"
+                        >
+
+                            <strong>
+                                ${esc(
+                                    volunteer.id
+                                )}
+                                ·
+                                ${esc(
+                                    volunteer.name
+                                )}
+                            </strong>
+
+                            <span
+                                class="rn-result-meta"
+                            >
+
+                                ${esc(
+                                    volunteer.skill
+                                )}
+
+                                ·
+
+                                ${esc(
+                                    volunteer.availability
+                                )}
+
+                                ·
+
+                                ${esc(
+                                    volunteer.phone
+                                )}
+
+                            </span>
+
+                        </div>
+
+                    `
+                )
+                .join("")
+
+            ||
+
+                `
+                    <div class="rn-muted rn-empty">
+                        No volunteers registered.
+                    </div>
+                `;
+
+
+    } catch (error) {
+
+        console.error(
+            "Dashboard load error:",
+            error
+        );
+
+
+        $("dashSummary").innerHTML = `
+
+            <div
+                class="rn-alert-banner danger"
+            >
+                ${esc(error.message)}
+            </div>
+
+        `;
+
+    }
+
+}
+
+
+// =====================================================
+// CLEAR RESOLVED REPORTS
+// =====================================================
+
+$("clearResolved").onclick =
+    async () => {
+
+        if (
+            !confirm(
+                "Delete all RESOLVED reports?"
+            )
+        ) {
+            return;
+        }
+
+
+        try {
+
+            const data =
+                await api(
+                    "/api/reports",
+                    {
+                        method: "DELETE"
+                    }
+                );
+
+
+            msg(
+                `${data.removed || 0} resolved report(s) deleted.`
+            );
+
+
+            await load();
+
+        } catch (error) {
+
+            console.error(
+                "Clear resolved error:",
+                error
+            );
+
+            msg(
+                error.message,
+                "danger"
+            );
+
+        }
+
+    };
+
+
+// =====================================================
+// DELETE ALL REPORTS
+// =====================================================
+
+$("clearAllReports").onclick =
+    async () => {
+
+        if (
+            !confirm(
+                "Delete ALL emergency reports?\n\nThis cannot be undone."
+            )
+        ) {
+            return;
+        }
+
+
+        try {
+
+            const reports =
+                await api(
+                    "/api/dashboard"
+                );
+
+
+            const allReports =
+                reports.reports || [];
+
+
+            for (
+                const report
+                of allReports
+            ) {
+
+                await api(
+                    "/api/reports/" +
+                    encodeURIComponent(
+                        report.id
+                    ),
+                    {
+                        method:
+                            "DELETE"
+                    }
+                );
+
+            }
+
+
+            msg(
+                `${allReports.length} report(s) deleted.`
+            );
+
+
+            await load();
+
+        } catch (error) {
+
+            console.error(
+                "Delete all reports error:",
+                error
+            );
+
+            msg(
+                error.message,
+                "danger"
+            );
+
+        }
+
+    };
+
+
+// =====================================================
+// REFRESH
+// =====================================================
+
+$("refreshDash").onclick =
+    load;
+
+
+// =====================================================
+// INITIAL LOAD
+// =====================================================
+
 load();
+
 </script>
 </body></html>
