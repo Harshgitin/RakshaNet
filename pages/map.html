@@ -136,6 +136,7 @@
         <a href="dashboard.html">Dashboard</a>
         <a href="../index.html#prediction">AI Prediction</a>
         <a href="help.html">Emergency Help</a>
+        <a href="help.html#community">Community</a>
         <a href="../index.html#services">Services</a>
         <a href="../index.html#alerts">Alerts</a>
     </nav>
@@ -154,128 +155,211 @@
 
 <main>
 <section class="emergency-page">
-<div class="emergency-header"><span class="emergency-label">🗺️ GIS INTELLIGENCE</span><h1>Live Disaster Intelligence Map</h1><p>Live weather, risk heatmaps, emergency reports, nearby resources and evacuation routing.</p></div>
-<div class="rn-map-topbar">
-<div class="rn-map-tools">
-<button id="locateUser" class="rn-btn primary">📍 My Location</button>
-<button id="showWeather" class="rn-btn blue">🌦️ Live Weather</button>
-<button id="showRiskZones" class="rn-btn">🔥 Risk Heatmap</button>
-<button id="showDisasters" class="rn-btn">🚨 Reports / Alerts</button>
-<button id="showHospitals" class="rn-btn">🏥 Hospitals</button>
-<button id="showShelters" class="rn-btn">🏠 Shelters</button>
-<button id="showResources" class="rn-btn">🚒 Rescue / Relief</button>
+<div class="emergency-header">
+    <span class="emergency-label">🗺️ GIS INTELLIGENCE</span>
+    <h1>Live Disaster Intelligence Map</h1>
+    <p>Understand your area, find nearby help, and reach safety faster.</p>
 </div>
-<div class="rn-chip">Source: IMD + live weather + OpenStreetMap</div>
-</div>
-<div class="rn-dashboard-wrap">
-<div class="rn-card rn-map-shell">
-<div id="disasterMap"></div>
-<div class="rn-footer-note">Heatmap values are calculated from live weather signals; official IMD warnings take precedence over the prototype risk estimate.</div>
-</div>
-<div class="rn-map-side">
-<div class="rn-card"><h3>📡 Data Status</h3><div class="rn-map-status-list">
-<div class="rn-status-row"><span>Weather</span><strong id="weatherStatus">Connecting…</strong></div>
-<div class="rn-status-row"><span>IMD warnings</span><strong id="imdStatus">Checking…</strong></div>
-<div class="rn-status-row"><span>OSM resources</span><strong id="osmStatus">Ready</strong></div>
-<div class="rn-status-row"><span>GPS</span><strong id="gpsStatus">Not detected</strong></div>
-</div></div>
 
 
-
-
-
-
-
-
-<!-- GOOGLE-MAPS STYLE LOCATION SEARCH -->
+<!-- =====================================================
+     LOCATION
+===================================================== -->
 <div class="rn-card">
 
-    <h3>🔎 Search Location</h3>
+    <h3>📍 Choose Location</h3>
 
-    <label class="rn-label">
-        City, district, village or locality
-    </label>
+    <div class="rn-location-input-row">
 
-    <div class="rn-location-search-wrap">
+        <button
+            id="locateUser"
+            class="rn-btn primary"
+            type="button"
+        >
+            📍 My Location
+        </button>
 
-        <div class="rn-location-input-row">
+        <input
+            id="mapLocationSearch"
+            class="rn-input"
+            type="text"
+            placeholder="Search city, district, village or locality..."
+            autocomplete="off"
+        >
 
-            <input
-                id="mapLocationSearch"
-                class="rn-input"
-                type="text"
-                placeholder="Search a place..."
-                autocomplete="off"
-            >
+        <button
+            id="mapLocationSearchBtn"
+            class="rn-btn primary"
+            type="button"
+        >
+            🔎 Search
+        </button>
 
-            <button
-                id="mapLocationSearchBtn"
-                class="rn-btn primary"
-                type="button"
-            >
-                Search
-            </button>
+    </div>
+
+    <div
+        id="mapLocationSuggestions"
+        class="rn-location-results"
+    ></div>
+
+    <div
+        id="mapSearchStatus"
+        class="rn-small"
+        style="margin-top:8px;"
+    >
+        Choose your current location or search for an area.
+    </div>
+
+</div>
+
+
+
+
+
+
+
+
+<!-- =====================================================
+     MAIN MAP + LIVE STATUS
+===================================================== -->
+<div class="rn-map-layout">
+
+    <!-- MAIN MAP -->
+    <div class="rn-card rn-map-shell">
+
+        <div class="rn-map-topbar">
+
+            <div class="rn-map-tools">
+
+                <button
+                    id="showWeather"
+                    class="rn-btn blue"
+                    type="button"
+                >
+                    🌦️ Weather
+                </button>
+
+                <button
+                    id="showRiskZones"
+                    class="rn-btn"
+                    type="button"
+                >
+                    🔥 Risk
+                </button>
+
+                <button
+                    id="showDisasters"
+                    class="rn-btn"
+                    type="button"
+                >
+                    🚨 Reports
+                </button>
+
+            </div>
+
+            <div class="rn-chip">
+                Source: IMD + Live Weather + OpenStreetMap
+            </div>
 
         </div>
 
+        <div id="disasterMap"></div>
 
-        <!-- SCROLLABLE SEARCH RESULTS -->
-        <div
-            id="mapLocationSuggestions"
-            class="rn-location-results"
-        ></div>
-
-    </div>
-
-
-    <div
-        id="mapSearchStatus"
-        class="rn-small"
-        style="margin-top:8px;"
-    >
-        Start typing to search for a location.
-    </div>
-
-</div>
-
-
-
-
-
-
-
-
-
-
-
-
-        <!-- AUTOCOMPLETE DROPDOWN -->
-        <div
-            id="mapLocationSuggestions"
-            style="
-                position:absolute;
-                left:0;
-                right:90px;
-                top:calc(100% + 6px);
-                z-index:2000;
-                display:none;
-            "
-        ></div>
+        <div class="rn-footer-note">
+            Official warnings take precedence over prototype risk estimates.
+        </div>
 
     </div>
 
-    <div
-        id="mapSearchStatus"
-        class="rn-small"
-        style="margin-top:8px;"
-    >
-        Start typing to see location recommendations.
+
+    <!-- LIVE DATA STATUS -->
+    <div class="rn-card rn-live-status-card">
+
+        <h3>📡 Live Data Status</h3>
+
+        <div class="rn-map-status-list">
+
+            <div class="rn-status-row">
+                <span>Weather</span>
+                <strong id="weatherStatus">Connecting…</strong>
+            </div>
+
+            <div class="rn-status-row">
+                <span>IMD warnings</span>
+                <strong id="imdStatus">Checking…</strong>
+            </div>
+
+            <div class="rn-status-row">
+                <span>OSM resources</span>
+                <strong id="osmStatus">Ready</strong>
+            </div>
+
+            <div class="rn-status-row">
+                <span>GPS</span>
+                <strong id="gpsStatus">Not detected</strong>
+            </div>
+
+        </div>
+
     </div>
 
 </div>
 
 
-<!-- SELECTED LOCATION -->
+
+
+
+
+
+
+<!-- =====================================================
+     NEARBY HELP & SAFETY
+===================================================== -->
+<div class="rn-card">
+
+    <h3>🆘 Find Help & Safety</h3>
+
+    <div class="rn-map-tools">
+
+        <button
+            id="showHospitals"
+            class="rn-btn"
+            type="button"
+        >
+            🏥 Hospitals
+        </button>
+
+        <button
+            id="showShelters"
+            class="rn-btn"
+            type="button"
+        >
+            🏠 Shelters
+        </button>
+
+        <button
+            id="showResources"
+            class="rn-btn"
+            type="button"
+        >
+            🚒 Rescue / Relief
+        </button>
+
+    </div>
+
+    <div
+        class="rn-muted"
+        style="margin-top:10px;"
+    >
+        Find important emergency resources near the selected area.
+    </div>
+
+</div>
+
+
+<!-- =====================================================
+     SELECTED AREA + AI RISK
+===================================================== -->
 <div class="rn-card">
 
     <h3>📍 Selected Area</h3>
@@ -288,14 +372,94 @@
     </div>
 
 </div>
-<div class="rn-card" id="route">
-<h3>🛣️ Evacuation Route</h3><label class="rn-label">Destination</label>
-<select id="destinationSelect" class="rn-select"><option value="">Choose hospital / shelter</option></select>
-<div class="rn-actions" style="margin-top:10px;"><button id="safeRouteButton" class="rn-btn primary">🛣️ Calculate Route</button><button id="clearRouteButton" class="rn-btn ghost">Clear</button></div>
-<div id="routeStatus" class="rn-muted" style="margin-top:10px;">Detect your location first, then choose a destination.</div>
+
+
+<!-- =====================================================
+     EVACUATION ROUTE
+===================================================== -->
+<div
+    class="rn-card"
+    id="route"
+>
+
+    <h3>🛣️ Evacuation Route</h3>
+
+    <label class="rn-label">
+        Destination
+    </label>
+
+    <select
+        id="destinationSelect"
+        class="rn-select"
+    >
+        <option value="">
+            Choose hospital / shelter
+        </option>
+    </select>
+
+
+    <div
+        class="rn-actions"
+        style="margin-top:10px;"
+    >
+
+        <button
+            id="safeRouteButton"
+            class="rn-btn primary"
+            type="button"
+        >
+            🛣️ Calculate Route
+        </button>
+
+        <button
+            id="clearRouteButton"
+            class="rn-btn ghost"
+            type="button"
+        >
+            Clear
+        </button>
+
+        <button
+            id="seeOnMapButton"
+            class="rn-btn blue"
+            type="button"
+            onclick="document.getElementById('disasterMap').scrollIntoView({behavior:'smooth', block:'center'});"
+        >
+            🗺️ See on Map
+        </button>
+
+    </div>
+
+
+    <div
+        id="routeStatus"
+        class="rn-muted"
+        style="margin-top:10px;"
+    >
+        Select a hospital or shelter to calculate a route.
+    </div>
+
 </div>
-<div class="rn-card"><h3>🧭 Legend</h3><div class="rn-result-list"><div>🟢 Low risk</div><div>🟡 Watch</div><div>🟠 High</div><div>🔴 Extreme</div><div>📍 Your location</div><div>🚨 Reported incident</div></div></div>
-</div>
+
+
+<!-- =====================================================
+     LEGEND
+===================================================== -->
+<div class="rn-card">
+
+    <h3>🧭 Map Legend</h3>
+
+    <div class="rn-result-list">
+
+        <div>🟢 Low Risk</div>
+        <div>🟡 Watch</div>
+        <div>🟠 High</div>
+        <div>🔴 Extreme</div>
+        <div>📍 Your Location</div>
+        <div>🚨 Reported Incident</div>
+
+    </div>
+
 </div>
 </section>
 </main>

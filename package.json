@@ -2,7 +2,7 @@
   "name": "rakshanet",
   "version": "1.0.0",
   "private": true,
-  "description": "RakshaNet disaster response prototype with local backend",
+  "description": "RakshaNet disaster response prototype with Node.js, Supabase, GIS and landslide ML inference",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",

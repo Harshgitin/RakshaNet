@@ -1,3 +1,19 @@
-node_modules/
-uploads/*
+# Secrets
 .env
+.env.*
+!.env.example
+
+# Dependencies
+node_modules/
+
+# Runtime uploads / temporary files
+uploads/
+ml/weather_cache/
+
+# Local user data (contains account data / password hashes)
+data/users.json
+
+# OS / logs
+.DS_Store
+Thumbs.db
+*.log

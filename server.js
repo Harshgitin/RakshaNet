@@ -81,53 +81,9 @@ const LANDSLIDE_FEATURES = [
     'longitude',
     'month'
 ];
-const DATA_DIR = path.join(ROOT, 'data');
 const UPLOAD_DIR = path.join(ROOT, 'uploads');
 
-for (const dir of [DATA_DIR, UPLOAD_DIR]) {
-    fs.mkdirSync(dir, { recursive: true });
-}
-
-const FILES = {
-    reports: path.join(DATA_DIR, 'reports.json'),
-    sos: path.join(DATA_DIR, 'sos.json'),
-    volunteers: path.join(DATA_DIR, 'volunteers.json'),
-    users: path.join(DATA_DIR, 'users.json')
-};
-
-for (const file of Object.values(FILES)) {
-    if (!fs.existsSync(file)) {
-        fs.writeFileSync(file, '[]');
-    }
-}
-
-function readJson(file) {
-    try {
-        return JSON.parse(fs.readFileSync(file, 'utf8'));
-    } catch {
-        return [];
-    }
-}
-
-function writeJson(file, value) {
-    fs.writeFileSync(
-        file,
-        JSON.stringify(value, null, 2)
-    );
-}
-
-function pushRecord(file, record, limit = 1000) {
-    const arr = readJson(file);
-
-    arr.unshift(record);
-
-    writeJson(
-        file,
-        arr.slice(0, limit)
-    );
-
-    return record;
-}
+fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 
 
 // =====================================================
@@ -1754,6 +1710,18 @@ if (req.file) {
             "Evidence storage error:",
             storageError
         );
+
+        // Clean up the temporary local upload if Storage upload fails.
+        try {
+            if (req.file?.path && fs.existsSync(req.file.path)) {
+                fs.unlinkSync(req.file.path);
+            }
+        } catch (cleanupError) {
+            console.warn(
+                "Temporary evidence cleanup failed:",
+                cleanupError.message
+            );
+        }
 
         return res.status(500).json({
 
